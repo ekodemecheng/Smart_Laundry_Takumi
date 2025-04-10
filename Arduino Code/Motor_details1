@@ -1,0 +1,74 @@
+// =============================================
+// PROGRAM KONTROL VIBRATION MOTOR PWM DENGAN DISPLAY OLED
+// =============================================
+
+// 1. PUSTAKA (LIBRARIES)
+#include <Arduino.h>    // Pustaka dasar Arduino
+#include <U8g2lib.h>    // Pustaka untuk kontrol display OLED
+#include <SPI.h>        // Pustaka komunikasi SPI (tidak digunakan tapi diperlukan oleh U8g2)
+#include <Wire.h>       // Pustaka komunikasi I2C
+
+// 2. DEKLARASI VARIABEL DAN OBJEK
+U8G2_SSD1306_128X32_UNIVISION_F_HW_I2C u8g2(U8G2_R0); // Objek untuk display OLED 128x32
+const int motorPin = 9;       // Pin PWM untuk kontrol motor
+const int potensiometerPin = A0; // Pin input analog untuk potensiometer
+
+// 3. FUNGSI SETUP (DIJALANKAN SEKALI SAAT START)
+void setup(void) {
+  // Inisialisasi display OLED
+  u8g2.begin();
+  
+  // Inisialisasi komunikasi serial untuk debugging
+  Serial.begin(9600);
+  Serial.println("Sistem Kontrol Motor PWM");
+  Serial.println("------------------------");
+  
+  // Set pin motor sebagai output
+  pinMode(motorPin, OUTPUT);
+  
+  // Membersihkan display
+  u8g2.clearBuffer();
+  u8g2.setFont(u8g2_font_logisoso28_tr);
+  u8g2.drawStr(0, 29, "0");
+  u8g2.sendBuffer();
+}
+
+// 4. FUNGSI LOOP (DIJALANKAN BERULANG)
+void loop(void) {
+  // 4.1 Baca nilai potensiometer (0-1023)
+  int sensorValue = analogRead(potensiometerPin);
+  
+  // 4.2 Konversi ke nilai PWM (0-255)
+  int pwmValue = sensorValue / 4;
+  
+  // 4.3 Kontrol motor dengan PWM
+  analogWrite(motorPin, pwmValue);
+  
+  // 4.4 Tampilkan nilai PWM di OLED
+  u8g2.clearBuffer();
+  u8g2.setFont(u8g2_font_logisoso28_tr);
+  
+  // Konversi nilai PWM ke string untuk ditampilkan
+  char pwmStr[4];
+  sprintf(pwmStr, "%d", pwmValue);
+  u8g2.drawStr(8, 29, pwmStr);
+  
+  u8g2.sendBuffer();
+  
+  // 4.5 Tampilkan informasi di Serial Monitor
+  Serial.print("Nilai Potensiometer: ");
+  Serial.print(sensorValue);
+  Serial.print(" | Nilai PWM Motor: ");
+  Serial.println(pwmValue);
+  
+  // 4.6 Delay untuk stabilitas
+  delay(100);
+}
+
+// =============================================
+// PENJELASAN TAMBAHAN:
+// 1. Display OLED menggunakan antarmuka I2C
+// 2. Pin A0 digunakan untuk membaca potensiometer
+// 3. Nilai analog 10-bit (0-1023) dikonversi ke 8-bit PWM (0-255)
+// 4. Nilai PWM ditampilkan di OLED dan Serial Monitor
+// =============================================
