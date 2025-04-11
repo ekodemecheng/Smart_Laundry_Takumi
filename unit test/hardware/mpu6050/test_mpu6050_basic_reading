@@ -1,0 +1,211 @@
+
+/*
+ * PROGRAM PEMBACA SENSOR MPU6050
+ * ==============================
+ * 
+ * Deskripsi:
+ * Program ini membaca data dari sensor MPU6050 yang merupakan sensor 6-axis
+ * (accelerometer + gyroscope) dan menampilkan datanya melalui Serial Monitor.
+ * 
+ * Komponen:
+ * - Board Arduino/ESP32
+ * - Sensor MPU6050
+ * - Koneksi I2C (SDA, SCL)
+ * 
+ * Library yang Digunakan:
+ * - Adafruit_MPU6050
+ * - Adafruit_Sensor
+ * - Wire (untuk komunikasi I2C)
+ */
+
+#include <Arduino.h>
+#include <Adafruit_MPU6050.h>  // Library khusus untuk MPU6050
+#include <Adafruit_Sensor.h>   // Library standar sensor Adafruit
+#include <Wire.h>              // Library untuk komunikasi I2C
+
+Adafruit_MPU6050 mpu;  // Membuat objek mpu dari kelas Adafruit_MPU6050
+
+void setup(void) {
+  Serial.begin(115200);  // Memulai komunikasi serial dengan baud rate 115200
+  
+  // Menunggu hingga port serial terbuka (khusus untuk board dengan USB virtual)
+  while (!Serial)
+    delay(10); 
+
+  Serial.println("Adafruit MPU6050 test!");  // Pesan awal
+
+  // Mencoba menginisialisasi sensor MPU6050
+  if (!mpu.begin()) {
+    Serial.println("Failed to find MPU6050 chip");
+    // Jika gagal, program akan terjebak di loop ini
+    while (1) {
+      delay(10);
+    }
+  }
+  Serial.println("MPU6050 Found!");  // Pesan jika sensor terdeteksi
+
+  // ========== KONFIGURASI ACCELEROMETER ==========
+  mpu.setAccelerometerRange(MPU6050_RANGE_8_G);  // Set range accelerometer ±8G
+  Serial.print("Accelerometer range set to: ");
+  
+  // Menampilkan range accelerometer yang aktif
+  switch (mpu.getAccelerometerRange()) {
+  case MPU6050_RANGE_2_G:
+    Serial.println("+-2G");
+    break;
+  case MPU6050_RANGE_4_G:
+    Serial.println("+-4G");
+    break;
+  case MPU6050_RANGE_8_G:
+    Serial.println("+-8G");
+    break;
+  case MPU6050_RANGE_16_G:
+    Serial.println("+-16G");
+    break;
+  }
+
+  // ========== KONFIGURASI GYROSCOPE ==========
+  mpu.setGyroRange(MPU6050_RANGE_500_DEG);  // Set range gyro ±500°/s
+  Serial.print("Gyro range set to: ");
+  
+  // Menampilkan range gyro yang aktif
+  switch (mpu.getGyroRange()) {
+  case MPU6050_RANGE_250_DEG:
+    Serial.println("+- 250 deg/s");
+    break;
+  case MPU6050_RANGE_500_DEG:
+    Serial.println("+- 500 deg/s");
+    break;
+  case MPU6050_RANGE_1000_DEG:
+    Serial.println("+- 1000 deg/s");
+    break;
+  case MPU6050_RANGE_2000_DEG:
+    Serial.println("+- 2000 deg/s");
+    break;
+  }
+
+  // ========== KONFIGURASI FILTER ==========
+  mpu.setFilterBandwidth(MPU6050_BAND_21_HZ);  // Set bandwidth filter 21Hz
+  Serial.print("Filter bandwidth set to: ");
+  
+  // Menampilkan bandwidth filter yang aktif
+  switch (mpu.getFilterBandwidth()) {
+  case MPU6050_BAND_260_HZ:
+    Serial.println("260 Hz");
+    break;
+  case MPU6050_BAND_184_HZ:
+    Serial.println("184 Hz");
+    break;
+  case MPU6050_BAND_94_HZ:
+    Serial.println("94 Hz");
+    break;
+  case MPU6050_BAND_44_HZ:
+    Serial.println("44 Hz");
+    break;
+  case MPU6050_BAND_21_HZ:
+    Serial.println("21 Hz");
+    break;
+  case MPU6050_BAND_10_HZ:
+    Serial.println("10 Hz");
+    break;
+  case MPU6050_BAND_5_HZ:
+    Serial.println("5 Hz");
+    break;
+  }
+
+  Serial.println("");  // Baris kosong untuk pemisah
+  delay(100);         // Jeda singkat sebelum masuk loop utama
+}
+
+void loop() {
+  // Membuat variabel untuk menyimpan data sensor
+  sensors_event_t a, g, temp;  // a=accelerometer, g=gyro, temp=temperature
+  
+  // Mengambil data terbaru dari sensor
+  mpu.getEvent(&a, &g, &temp);
+
+  // ========== MENAMPILKAN DATA ACCELEROMETER ==========
+  Serial.print("Acceleration X: ");
+  Serial.print(a.acceleration.x);  // Akselerasi sumbu X (m/s²)
+  Serial.print(", Y: ");
+  Serial.print(a.acceleration.y);  // Akselerasi sumbu Y (m/s²)
+  Serial.print(", Z: ");
+  Serial.print(a.acceleration.z);  // Akselerasi sumbu Z (m/s²)
+  Serial.println(" m/s^2");
+
+  // ========== MENAMPILKAN DATA GYROSCOPE ==========
+  Serial.print("Rotation X: ");
+  Serial.print(g.gyro.x);  // Kecepatan sudut sumbu X (rad/s)
+  Serial.print(", Y: ");
+  Serial.print(g.gyro.y);  // Kecepatan sudut sumbu Y (rad/s)
+  Serial.print(", Z: ");
+  Serial.print(g.gyro.z);  // Kecepatan sudut sumbu Z (rad/s)
+  Serial.println(" rad/s");
+
+  // ========== MENAMPILKAN DATA SUHU ==========
+  Serial.print("Temperature: ");
+  Serial.print(temp.temperature);  // Suhu dalam °C
+  Serial.println(" degC");
+
+  Serial.println("");  // Baris kosong untuk pemisah
+  delay(500);        // Jeda 500ms antara pembacaan
+}
+
+/*
+ * PENJELASAN TAMBAHAN:
+ * 1. MPU6050 adalah IMU (Inertial Measurement Unit) yang berisi:
+ *    - Accelerometer 3-axis (mengukur percepatan linier)
+ *    - Gyroscope 3-axis (mengukur kecepatan sudut)
+ *    - Sensor suhu
+ * 
+ * 2. Komunikasi menggunakan protokol I2C:
+ *    - SDA: Data
+ *    - SCL: Clock
+ * 
+ * 3. Konfigurasi yang penting:
+ *    - Range accelerometer: menentukan sensitivitas
+ *    - Range gyro: menentukan sensitivitas putaran
+ *    - Bandwidth filter: menentukan frekuensi cutoff noise
+ * 
+ * 4. Aplikasi umum:
+ *    - Sistem stabilisasi drone
+ *    - Navigasi robot
+ *    - Game controller motion sensing
+ *    - Pedometer
+ * 
+ * 5. Kalibrasi mungkin diperlukan untuk aplikasi presisi tinggi
+ * 
+ * 6. Untuk meningkatkan performa:
+ *    - Kurangi delay() dan gunakan millis() untuk timing non-blocking
+ *    - Sesuaikan bandwidth filter sesuai kebutuhan
+ *    - Gunakan range yang sesuai dengan aplikasi
+ */
+//```
+
+// Cara Kerja Program:
+//1. **Inisialisasi**:
+  //- Komunikasi serial dimulai
+  //- Sensor MPU6050 diinisialisasi
+  // - Konfigurasi range dan filter diatur
+
+//2. **Loop Utama**:
+   //- Data terbaru dibaca dari sensor
+   //- Nilai accelerometer, gyroscope, dan suhu ditampilkan
+   //- Proses diulang setiap 500ms
+
+//## Tips Penggunaan:
+//1. Pastikan koneksi I2C benar:
+   //- MPU6050 VCC → 3.3V/5V Arduino
+   //- MPU6050 GND → GND Arduino
+   //- MPU6050 SCL → Pin SCL Arduino
+  //- MPU6050 SDA → Pin SDA Arduino
+
+//2. Untuk board Arduino:
+   //- SDA biasanya pin A4
+   //- SCL biasanya pin A5
+
+//3. Untuk board ESP32:
+   //- SDA biasanya pin 21
+   //- SCL biasanya pin 22
+
+//Program ini memberikan dasar yang komprehensif untuk bekerja dengan sensor MPU6050 dan bisa dikembangkan lebih lanjut untuk berbagai aplikasi motion sensing.
