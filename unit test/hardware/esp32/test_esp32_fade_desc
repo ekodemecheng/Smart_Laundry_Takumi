@@ -1,0 +1,89 @@
+/*
+ * PROGRAM FADE LED DENGAN PWM
+ * ==========================
+ * 
+ * Deskripsi:
+ * Program ini membuat efek fade (menghilang perlahan) pada LED 
+ * menggunakan teknik PWM (Pulse Width Modulation)
+ * 
+ * Komponen:
+ * - LED terhubung ke pin PWM (ditandai dengan ~ pada board)
+ * - Resistor 220 ohm (untuk LED eksternal)
+ * 
+ * Pin PWM pada Arduino UNO:
+ * ~3, ~5, ~6, ~9, ~10, ~11
+ * 
+ * Referensi:
+ * https://www.arduino.cc/en/Tutorial/BuiltInExamples/Fade
+ */
+
+#include <Arduino.h>  // Pustaka dasar Arduino
+
+// Deklarasi variabel:
+int led = 2;          // Pin PWM yang terhubung ke LED (pin 2 harus PWM-capable)
+int brightness = 0;   // Nilai kecerahan awal LED (0-255)
+int fadeAmount = 5;   // Besarnya perubahan kecerahan setiap step
+
+void setup() {
+  // Mengatur pin LED sebagai OUTPUT
+  pinMode(led, OUTPUT);
+  
+  /*
+   * Penjelasan:
+   * - pinMode() menentukan apakah pin berfungsi sebagai input atau output
+   * - Untuk kontrol LED, pin harus diatur sebagai OUTPUT
+   */
+}
+
+void loop() {
+  // Mengatur kecerahan LED dengan PWM
+  analogWrite(led, brightness);
+  
+  /*
+   * Penjelasan analogWrite():
+   * - Mengirim sinyal PWM ke pin
+   * - Nilai brightness: 0 (OFF) sampai 255 (full ON)
+   * - Hanya bekerja di pin PWM (ditandai ~ pada board)
+   * - Membuat efek redup dengan mengubah duty cycle
+   */
+
+  // Meningkatkan/menurunkan kecerahan
+  brightness = brightness + fadeAmount;
+  
+  // Membalik arah fade saat mencapai batas atas/bawah
+  if (brightness <= 0 || brightness >= 255) {
+    fadeAmount = -fadeAmount; // Membalik nilai fadeAmount
+  }
+  
+  /*
+   * Logika perubahan brightness:
+   * 1. Saat brightness mencapai 255, fadeAmount menjadi negatif
+   *    (LED mulai meredup)
+   * 2. Saat brightness mencapai 0, fadeAmount menjadi positif
+   *    (LED mulai terang kembali)
+   */
+
+  // Jeda untuk mengatur kecepatan efek fade
+  delay(30);
+  
+  /*
+   * Penjelasan delay():
+   * - Mengontrol kecepatan efek fade
+   * - Nilai lebih kecil = fade lebih cepat
+   * - Nilai lebih besar = fade lebih lambat
+   * - 30ms memberikan efek fade yang halus
+   */
+}
+
+/*
+ * VARIASI YANG DAPAT DICOBA:
+ * 1. Ubah nilai fadeAmount untuk mengubah kecepatan perubahan
+ * 2. Ubah delay() untuk mengatur smoothness efek
+ * 3. Gabungkan beberapa LED dengan pola fade berbeda
+ * 4. Kontrol fade menggunakan potensiometer
+ * 
+ * CATATAN PENTING:
+ * 1. Pastikan menggunakan pin PWM (ditandai ~ pada board)
+ * 2. Untuk LED eksternal, selalu gunakan resistor pembatas arus
+ * 3. Nilai brightness 0-255 (8-bit resolution)
+ */
