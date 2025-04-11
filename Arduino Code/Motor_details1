@@ -1,15 +1,25 @@
 // =============================================
-// PROGRAM KONTROL VIBRATION MOTOR PWM DENGAN DISPLAY OLED
+// PROGRAM KONTROL MOTOR PWM DENGAN TAMPILAN SERAGAM
+// OLED DAN SERIAL MONITOR
 // =============================================
+
+/* 
+ * FITUR UTAMA:
+ * 1. Membaca nilai potensiometer (0-1023)
+ * 2. Mengkonversi ke nilai PWM (0-255)
+ * 3. Mengontrol kecepatan motor DC
+ * 4. Menampilkan nilai di OLED dan Serial Monitor dengan format seragam
+ * 5. Update tampilan setiap 100ms untuk stabilitas
+ */
 
 // 1. PUSTAKA (LIBRARIES)
 #include <Arduino.h>    // Pustaka dasar Arduino
 #include <U8g2lib.h>    // Pustaka untuk kontrol display OLED
-#include <SPI.h>        // Pustaka komunikasi SPI (tidak digunakan tapi diperlukan oleh U8g2)
+#include <SPI.h>        // Pustaka komunikasi SPI
 #include <Wire.h>       // Pustaka komunikasi I2C
 
 // 2. DEKLARASI VARIABEL DAN OBJEK
-U8G2_SSD1306_128X32_UNIVISION_F_HW_I2C u8g2(U8G2_R0); // Objek untuk display OLED 128x32
+U8G2_SSD1306_128X32_UNIVISION_F_HW_I2C u8g2(U8G2_R0); // Objek display OLED 128x32
 const int motorPin = 9;       // Pin PWM untuk kontrol motor
 const int potensiometerPin = A0; // Pin input analog untuk potensiometer
 
@@ -18,18 +28,25 @@ void setup(void) {
   // Inisialisasi display OLED
   u8g2.begin();
   
-  // Inisialisasi komunikasi serial untuk debugging
+  // Inisialisasi komunikasi serial
   Serial.begin(9600);
-  Serial.println("Sistem Kontrol Motor PWM");
-  Serial.println("------------------------");
+  while (!Serial); // Tunggu hingga serial ready
   
   // Set pin motor sebagai output
   pinMode(motorPin, OUTPUT);
   
-  // Membersihkan display
+  // Tampilan awal di Serial Monitor
+  Serial.println("================================");
+  Serial.println("  SISTEM KONTROL MOTOR PWM");
+  Serial.println("================================");
+  Serial.println(" Potensiometer | Nilai PWM ");
+  Serial.println("----------------------------");
+  
+  // Tampilan awal di OLED
   u8g2.clearBuffer();
-  u8g2.setFont(u8g2_font_logisoso28_tr);
-  u8g2.drawStr(0, 29, "0");
+  u8g2.setFont(u8g2_font_7x14B_tf);
+  u8g2.drawStr(0, 15, "Pot:");
+  u8g2.drawStr(0, 30, "PWM:");
   u8g2.sendBuffer();
 }
 
@@ -44,31 +61,47 @@ void loop(void) {
   // 4.3 Kontrol motor dengan PWM
   analogWrite(motorPin, pwmValue);
   
-  // 4.4 Tampilkan nilai PWM di OLED
+  // 4.4 Tampilkan di OLED
   u8g2.clearBuffer();
-  u8g2.setFont(u8g2_font_logisoso28_tr);
   
-  // Konversi nilai PWM ke string untuk ditampilkan
-  char pwmStr[4];
-  sprintf(pwmStr, "%d", pwmValue);
-  u8g2.drawStr(8, 29, pwmStr);
+  // Set font dan tampilkan label
+  u8g2.setFont(u8g2_font_7x14B_tf);
+  u8g2.drawStr(0, 15, "Pot:");
+  u8g2.drawStr(0, 30, "PWM:");
+  
+  // Konversi nilai ke string
+  char displayStr[16];
+  
+  // Tampilkan nilai potensiometer
+  sprintf(displayStr, "%4d", sensorValue);
+  u8g2.drawStr(40, 15, displayStr);
+  
+  // Tampilkan nilai PWM
+  sprintf(displayStr, "%3d", pwmValue);
+  u8g2.drawStr(40, 30, displayStr);
   
   u8g2.sendBuffer();
   
-  // 4.5 Tampilkan informasi di Serial Monitor
-  Serial.print("Nilai Potensiometer: ");
+  // 4.5 Tampilkan di Serial Monitor (format seragam dengan OLED)
+  Serial.print("    ");
   Serial.print(sensorValue);
-  Serial.print(" | Nilai PWM Motor: ");
+  Serial.print("    |    ");
   Serial.println(pwmValue);
   
   // 4.6 Delay untuk stabilitas
   delay(100);
 }
 
-// =============================================
-// PENJELASAN TAMBAHAN:
-// 1. Display OLED menggunakan antarmuka I2C
-// 2. Pin A0 digunakan untuk membaca potensiometer
-// 3. Nilai analog 10-bit (0-1023) dikonversi ke 8-bit PWM (0-255)
-// 4. Nilai PWM ditampilkan di OLED dan Serial Monitor
-// =============================================
+/*
+ * PENJELASAN TAMBAHAN:
+ * 1. Format tampilan di Serial Monitor dibuat seragam dengan OLED
+ *    - Keduanya menampilkan nilai Potensiometer dan PWM
+ *    - Format angka rata kanan dengan lebar tetap
+ * 2. OLED menggunakan font 7x14B yang jelas terbaca
+ * 3. Serial Monitor menampilkan dalam format tabel
+ * 4. Delay 100ms memberikan pembacaan yang stabil
+ * 5. Program siap untuk ditambah fitur seperti:
+ *    - Kalibrasi otomatis
+ *    - Batas maksimum/minimum PWM
+ *    - Tampilan grafik (jika menggunakan OLED yang lebih besar)
+ */
