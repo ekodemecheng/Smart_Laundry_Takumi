@@ -1,1 +1,36 @@
+// Program Pengujian Sensor Hall Eksternal + LED Indikator
+
+#include <Arduino.h>
+
+// Pin konfigurasi
+const int sensorPin = 13;   // Sensor Hall eksternal terhubung ke pin GPIO 13
+const int ledPin = 2;       // LED indikator terhubung ke GPIO 2 (bisa sesuaikan)
+
+// Threshold deteksi magnet (disesuaikan berdasarkan eksperimen)
+const int threshold = 800;  // Nilai di bawah ini dianggap deteksi magnet
+
+void setup() {
+  pinMode(sensorPin, INPUT);
+  pinMode(ledPin, OUTPUT);
+  Serial.begin(9600);
+  Serial.println("=== Pengujian Sensor Hall Eksternal + LED ===");
+}
+
+void loop() {
+  int sensorValue = analogRead(sensorPin);  // Baca nilai analog dari sensor
+
+  Serial.print("Nilai Sensor: ");
+  Serial.println(sensorValue);
+
+  // Jika nilai lebih kecil dari ambang, berarti medan magnet terdeteksi
+  if (sensorValue < threshold) {
+    digitalWrite(ledPin, HIGH);  // Nyalakan LED
+    Serial.println("Magnet TERDETEKSI!");
+  } else {
+    digitalWrite(ledPin, LOW);   // Matikan LED
+    Serial.println("Tidak ada magnet");
+  }
+
+  delay(300);  // Delay antar pembacaan
+}
 
