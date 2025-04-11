@@ -1,0 +1,184 @@
+/*
+ * PROGRAM DETEKSI GETARAN DENGAN MPU6050 DAN KONTROL MODUL GETARAN
+ * ================================================================
+ * 
+ * Fungsi:
+ * 1. Membaca data accelerometer, gyroscope, dan suhu dari MPU6050
+ * 2. Mendeteksi getaran berdasarkan nilai percepatan
+ * 3. Mengontrol modul getaran (vibration motor/LED) berdasarkan deteksi
+ * 
+ * Komponen:
+ * - Board ESP32/Arduino
+ * - Sensor MPU6050 (accelerometer + gyro)
+ * - Modul getaran/LED dengan resistor
+ * - Koneksi I2C (SDA, SCL)
+ */
+
+#include <Arduino.h>          // Library dasar untuk fungsi Arduino
+#include <Adafruit_MPU6050.h> // Library khusus untuk MPU6050
+#include <Adafruit_Sensor.h>  // Library standar sensor Adafruit
+#include <Wire.h>             // Library untuk komunikasi I2C
+
+const int VibrationPin = 23;  // Pin GPIO untuk kontrol modul getaran (PWM capable)
+Adafruit_MPU6050 mpu;         // Objek sensor MPU6050
+
+float vibrationThreshold = 1.0; // Nilai ambang deteksi getaran (dalam m/s²)
+
+/*
+ * Fungsi initializeMPU6050()
+ * --------------------------
+ * Menginisialisasi sensor MPU6050 dengan konfigurasi:
+ * - Accelerometer range ±8G
+ * - Gyro range ±500°/s
+ * - Filter bandwidth 21Hz
+ */
+void initializeMPU6050() {
+  Serial.println("Adafruit MPU6050 test!");
+
+  // Coba memulai komunikasi dengan sensor
+  if (!mpu.begin()) {
+    Serial.println("Failed to find MPU6050 chip");
+    while (1) {
+      delay(10); // Terjebak di loop jika sensor tidak terdeteksi
+    }
+  }
+
+  Serial.println("MPU6050 Found!");
+
+  // Konfigurasi range accelerometer
+  mpu.setAccelerometerRange(MPU6050_RANGE_8_G);
+  /* Pilihan range accelerometer:
+   * MPU6050_RANGE_2_G, MPU6050_RANGE_4_G, 
+   * MPU6050_RANGE_8_G, MPU6050_RANGE_16_G */
+
+  // Konfigurasi range gyroscope
+  mpu.setGyroRange(MPU6050_RANGE_500_DEG);
+  /* Pilihan range gyro:
+   * MPU6050_RANGE_250_DEG, MPU6050_RANGE_500_DEG,
+   * MPU6050_RANGE_1000_DEG, MPU6050_RANGE_2000_DEG */
+
+  // Konfigurasi filter digital
+  mpu.setFilterBandwidth(MPU6050_BAND_21_HZ);
+  /* Pilihan bandwidth filter:
+   * MPU6050_BAND_260_HZ, MPU6050_BAND_184_HZ,
+   * MPU6050_BAND_94_HZ, MPU6050_BAND_44_HZ,
+   * MPU6050_BAND_21_HZ, MPU6050_BAND_10_HZ, 
+   * MPU6050_BAND_5_HZ */
+
+  Serial.println("");
+  delay(100); // Delay singkat untuk stabilisasi
+}
+
+/*
+ * Fungsi isVibrationOn()
+ * ----------------------
+ * Mengecek apakah terjadi getaran dengan membandingkan
+ * nilai percepatan dengan threshold
+ * 
+ * Parameter:
+ * sensors_event_t &a - struct yang berisi data accelerometer
+ * 
+ * Return:
+ * true jika terdeteksi getaran, false jika tidak
+ */
+bool isVibrationOn(sensors_event_t &a) {
+  // Deteksi getaran jika percepatan melebihi threshold
+  // (Bisa dikembangkan untuk deteksi multi-axis)
+  return (abs(a.acceleration.x) > vibrationThreshold);
+}
+
+/*
+ * Fungsi controlVibration()
+ * ------------------------
+ * Mengontrol modul getaran/LED dengan PWM
+ * 
+ * Parameter:
+ * bool state - true untuk ON, false untuk OFF
+ * int duration - durasi dalam milidetik
+ */
+void controlVibration(bool state, int duration) {
+  analogWrite(VibrationPin, state ? 255 : 0); // PWM 255 (ON) atau 0 (OFF)
+  Serial.println(state ? "Vibration On" : "Vibration Off");
+  delay(duration); // Tahan selama durasi tertentu
+}
+
+/*
+ * Fungsi readMpuValue()
+ * ---------------------
+ * Membaca dan menampilkan semua data dari MPU6050:
+ * - Accelerometer (X,Y,Z)
+ * - Gyroscope (X,Y,Z)
+ * - Temperature
+ * - Status deteksi getaran
+ */
+void readMpuValue() {
+  sensors_event_t a, g, temp; // Struct untuk data sensor
+  
+  // Baca data terbaru dari sensor
+  mpu.getEvent(&a, &g, &temp);
+
+  // Tampilkan data accelerometer
+  Serial.print("Acceleration X: ");
+  Serial.print(a.acceleration.x);
+  Serial.print(", Y: ");
+  Serial.print(a.acceleration.y);
+  Serial.print(", Z: ");
+  Serial.print(a.acceleration.z);
+  Serial.println(" m/s^2");
+
+  // Tampilkan data gyroscope
+  Serial.print("Rotation X: ");
+  Serial.print(g.gyro.x);
+  Serial.print(", Y: ");
+  Serial.print(g.gyro.y);
+  Serial.print(", Z: ");
+  Serial.print(g.gyro.z);
+  Serial.println(" rad/s");
+
+  // Tampilkan data suhu
+  Serial.print("Temperature: ");
+  Serial.print(temp.temperature);
+  Serial.println(" degC");
+
+  // Deteksi dan tampilkan status getaran
+  bool vibrationState = isVibrationOn(a);
+  Serial.println(vibrationState ? "Detected Vibration On" : "Detected Vibration Off");
+
+  Serial.println(""); // Baris kosong sebagai pemisah
+  delay(500);        // Delay antar pembacaan
+}
+
+/*
+ * Fungsi setup()
+ * -------------
+ * Dijalankan sekali saat board mulai
+ */
+void setup(void) {
+  Serial.begin(9600); // Inisialisasi serial monitor
+  while (!Serial) {
+    delay(10); // Tunggu hingga port serial terbuka
+  }
+  Serial.println("MPU6050 Found!");
+  pinMode(VibrationPin, OUTPUT); // Set pin getaran sebagai output
+  initializeMPU6050(); // Inisialisasi sensor
+}
+
+/*
+ * Fungsi loop()
+ * -------------
+ * Dijalankan berulang setelah setup()
+ */
+void loop() {
+  // Siklus kontrol getaran:
+  controlVibration(true, 1000);  // Aktifkan getaran 1 detik
+  readMpuValue();                // Baca dan tampilkan data sensor
+  controlVibration(false, 1000); // Matikan getaran 1 detik
+  readMpuValue();                // Baca dan tampilkan data sensor
+  
+  /* Catatan: 
+   * Untuk aplikasi nyata, logika kontrol bisa disesuaikan:
+   * - Aktifkan getaran hanya saat terdeteksi vibrasi
+   * - Tambahkan filter untuk menghindari false positive
+   * - Implementasikan pola getaran yang lebih kompleks
+   */
+}
