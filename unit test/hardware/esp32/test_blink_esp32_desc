@@ -1,0 +1,99 @@
+/*
+ * PROGRAM BLINK LED DASAR
+ * ======================
+ * 
+ * Deskripsi:
+ * Program ini menyalakan dan mematikan LED bawaan Arduino secara berulang
+ * dengan interval 1 detik. Program ini merupakan contoh paling dasar
+ * untuk memulai pemrograman Arduino.
+ * 
+ * Board yang Didukung:
+ * - UNO, MEGA, ZERO: LED pada pin digital 13
+ * - MKR1000: LED pada pin digital 6
+ * - Dan board Arduino lainnya (cek spesifikasi board Anda)
+ * 
+ * Sejarah Modifikasi:
+ * - 8 Mei 2014 oleh Scott Fitzgerald (versi awal)
+ * - 2 Sep 2016 oleh Arturo Guadalupi (penyesuaian)
+ * - 8 Sep 2016 oleh Colby Newman (penyempurnaan)
+ * 
+ * Lisensi:
+ * Contoh kode ini berada dalam domain publik (bebas digunakan)
+ * 
+ * Referensi:
+ * https://www.arduino.cc/en/Tutorial/BuiltInExamples/Blink
+ */
+
+// Pustaka standar Arduino (termasuk secara otomatis di IDE Arduino)
+#include <Arduino.h>  
+
+// Fungsi setup() - dijalankan sekali saat Arduino mulai atau di-reset
+void setup() {
+  // Mengatur pin LED_BUILTIN sebagai OUTPUT
+  // LED_BUILTIN adalah konstanta yang sudah didefinisikan untuk LED bawaan
+  pinMode(LED_BUILTIN, OUTPUT);
+  
+  /* 
+   * Penjelasan pinMode():
+   * Fungsi ini mengkonfigurasi pin tertentu untuk berperilaku 
+   * sebagai input atau output
+   * 
+   * Syntax: pinMode(pin, mode)
+   * - pin: nomor pin yang akan dikonfigurasi
+   * - mode: INPUT, OUTPUT, atau INPUT_PULLUP
+   */
+}
+
+// Fungsi loop() - dijalankan berulang setelah setup() selesai
+void loop() {
+  // Menyalakan LED dengan memberikan tegangan HIGH (5V atau 3.3V)
+  digitalWrite(LED_BUILTIN, HIGH);  
+  
+  /* 
+   * Penjelasan digitalWrite():
+   * Fungsi ini menulis nilai HIGH atau LOW ke pin digital
+   * 
+   * Syntax: digitalWrite(pin, value)
+   * - pin: nomor pin yang akan ditulis
+   * - value: HIGH (1) atau LOW (0)
+   */
+  
+  // Menunggu selama 1000 milidetik (1 detik)
+  delay(1000);                      
+  
+  /* 
+   * Penjelasan delay():
+   * Menghentikan eksekusi program selama waktu tertentu (dalam milidetik)
+   * 
+   * Syntax: delay(ms)
+   * - ms: waktu tunda dalam milidetik (unsigned long)
+   */
+  
+  // Mematikan LED dengan memberikan tegangan LOW (0V)
+  digitalWrite(LED_BUILTIN, LOW);   
+  
+  // Menunggu lagi selama 1 detik
+  delay(1000);                      
+  
+  /*
+   * Siklus ini akan terus berulang:
+   * 1. LED menyala (HIGH)
+   * 2. Tunggu 1 detik
+   * 3. LED mati (LOW)
+   * 4. Tunggu 1 detik
+   * 5. Kembali ke langkah 1
+   */
+}
+
+/*
+ * VARIASI YANG DAPAT DICOBA:
+ * 1. Ubah waktu delay untuk membuat kedipan lebih cepat/lambat
+ * 2. Tambahkan LED eksternal dengan resistor 220 ohm
+ * 3. Buat pola kedipan yang lebih kompleks
+ * 4. Gunakan millis() untuk kedipan non-blocking
+ * 
+ * CATATAN PENTING:
+ * - LED bawaan sudah memiliki resistor internal
+ * - Untuk LED eksternal, selalu gunakan resistor pembatas arus
+ *   (biasanya 220-470 ohm) untuk mencegah kerusakan LED atau pin Arduino
+ */
