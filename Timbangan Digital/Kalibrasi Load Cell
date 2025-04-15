@@ -1,37 +1,52 @@
-// Calibrating the load cell
+// Program untuk mengkalibrasi Load Cell menggunakan HX711
 #include <Arduino.h>
 #include "HX711.h"
 
-// HX711 circuit wiring
-const int LOADCELL_DOUT_PIN = 16;
-const int LOADCELL_SCK_PIN = 4;
+// Pin yang digunakan untuk menghubungkan HX711 ke ESP32
+const int LOADCELL_DOUT_PIN = 16;  // DT pin HX711 terhubung ke GPIO16
+const int LOADCELL_SCK_PIN = 4;    // SCK pin HX711 terhubung ke GPIO4
 
-HX711 scale;
+HX711 scale; // Membuat objek scale dari kelas HX711
 
 void setup() {
-  Serial.begin(115200);
+  Serial.begin(115200); // Inisialisasi komunikasi serial dengan baudrate 115200
   
-  // Cara lebih sederhana untuk set frekuensi CPU ke 80MHz
-  setCpuFrequencyMhz(80);
+  // Mengatur frekuensi CPU ESP32 ke 80MHz (untuk efisiensi atau stabilitas saat membaca sensor)
+  setCpuFrequencyMhz(80); 
   
+  // Inisialisasi komunikasi antara ESP32 dan HX711
   scale.begin(LOADCELL_DOUT_PIN, LOADCELL_SCK_PIN);
 }
 
 void loop() {
+  // Cek apakah modul HX711 sudah siap digunakan
   if (scale.is_ready()) {
-    scale.set_scale();    
+    // Set skala ke default (belum dikalibrasi) sebelum melakukan tare
+    scale.set_scale(); // Belum ada calibration_factor yang dimasukkan di sini
+    
+    // Memberi tahu pengguna untuk melepas semua beban dari Load Cell
     Serial.println("Tare... remove any weights from the scale.");
-    delay(5000);
+    delay(5000); // Tunggu 5 detik untuk memberi waktu pengguna melepas beban
+    
+    // Lakukan tare — menyetel berat sekarang sebagai 0
     scale.tare();
     Serial.println("Tare done...");
+    
+    // Meminta pengguna menempatkan beban yang diketahui nilainya (misalnya 1kg)
     Serial.print("Place a known weight on the scale...");
-    delay(5000);
+    delay(5000); // Tunggu 5 detik agar pengguna sempat menaruh beban
+    
+    // Membaca berat sebanyak 10 sampel, rata-ratanya disimpan di variabel 'reading'
     long reading = scale.get_units(10);
+    
+    // Tampilkan hasil pembacaan ke Serial Monitor
     Serial.print("Result: ");
-    Serial.println(reading);
+    Serial.println(reading); // Nilai inilah yang akan digunakan untuk menghitung calibration_factor
   } 
   else {
+    // Jika HX711 tidak ditemukan atau tidak siap
     Serial.println("HX711 not found.");
   }
-  delay(1000);
+  
+  delay(1000); // Delay 1 detik sebelum loop diulang
 }
