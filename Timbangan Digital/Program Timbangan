@@ -1,0 +1,113 @@
+/*
+ * Program untuk membaca berat menggunakan load cell dengan HX711 pada ESP32
+ * Tutorial lengkap: https://RandomNerdTutorials.com/esp32-load-cell-hx711/
+ * Library HX711: https://github.com/bogde/HX711
+ * 
+ * MIT License
+ * (c) 2018 Bogdan Necula
+ *
+ * Penjelasan ditambahkan untuk memudahkan pemahaman
+ */
+
+// Include library yang diperlukan
+#include <Arduino.h>      // Library dasar Arduino
+#include "HX711.h"        // Library untuk modul HX711 (load cell amplifier)
+#include "esp32-hal.h"    // Library khusus ESP32 untuk kontrol hardware
+
+// Konfigurasi pin untuk HX711
+const int LOADCELL_DOUT_PIN = 16;  // Pin DATA OUT dari HX711 terhubung ke GPIO16
+const int LOADCELL_SCK_PIN = 4;    // Pin SCK dari HX711 terhubung ke GPIO4
+
+// Membuat objek scale dari class HX711
+HX711 scale;
+
+void setup() {
+  // Inisialisasi serial communication dengan baud rate 115200
+  Serial.begin(115200);
+  
+  // Mengatur frekuensi CPU ESP32 menjadi 80MHz untuk optimasi
+  // Fungsi ini lebih modern dibanding metode RTC lama
+  setCpuFrequencyMhz(80);
+  
+  Serial.println("HX711 Demo");
+  Serial.println("Initializing the scale");
+
+  // Inisialisasi scale dengan pin yang telah ditentukan
+  scale.begin(LOADCELL_DOUT_PIN, LOADCELL_SCK_PIN);
+
+  // Menampilkan informasi sebelum kalibrasi
+  Serial.println("Before setting up the scale:");
+  
+  // Membaca nilai raw dari ADC
+  Serial.print("read (raw): \t\t");
+  Serial.println(scale.read());
+  
+  // Membaca nilai rata-rata dari 20 pembacaan
+  Serial.print("read average (20x): \t\t");
+  Serial.println(scale.read_average(20));
+  
+  // Mendapatkan nilai setelah dikurangi tare (belum di-set)
+  Serial.print("get value (5x - tare): \t\t");
+  Serial.println(scale.get_value(5));
+  
+  // Mendapatkan nilai dalam satuan berat (belum dikalibrasi)
+  Serial.print("get units (5x): \t\t");
+  Serial.println(scale.get_units(5), 1);  // 1 digit desimal
+            
+  // KALIBRASI SCALE
+  // Nilai kalibrasi harus disesuaikan dengan sensor Anda
+  // Cara mendapatkan nilai kalibrasi:
+  // 1. Letakkan beban dengan berat diketahui (misal 100g)
+  // 2. Baca nilai raw dengan scale.get_units()
+  // 3. Hitung: calibration_factor = (nilai_raw) / (berat_diketahui)
+  scale.set_scale(103.007);  // Nilai contoh, ganti dengan nilai kalibrasi Anda
+  
+  // Tare (nol-kan timbangan) - anggap ini sebagai berat 0
+  scale.tare();
+
+  // Menampilkan informasi setelah kalibrasi
+  Serial.println("After setting up the scale:");
+  
+  // Membaca nilai raw setelah kalibrasi
+  Serial.print("read (raw): \t\t");
+  Serial.println(scale.read());
+  
+  // Membaca nilai rata-rata 20x setelah kalibrasi
+  Serial.print("read average (20x): \t\t");
+  Serial.println(scale.read_average(20));
+  
+  // Mendapatkan nilai setelah dikurangi tare (sudah di-set)
+  Serial.print("get value (5x - tare): \t\t");
+  Serial.println(scale.get_value(5));
+  
+  // Mendapatkan nilai dalam satuan berat (sudah dikalibrasi)
+  Serial.print("get units (5x): \t\t");
+  Serial.println(scale.get_units(5), 1);  // 1 digit desimal
+
+  Serial.println("Readings:");  // Pesan untuk pembacaan berikutnya
+}
+
+void loop() {
+  // Menampilkan pembacaan tunggal dan rata-rata 10 pembacaan
+  Serial.print("one reading:\t");
+  Serial.print(scale.get_units(), 1);  // 1 digit desimal
+  Serial.print("\t| average (10x):\t");
+  Serial.println(scale.get_units(10), 5);  // 5 digit desimal
+
+  // Menghemat daya dengan mematikan HX711 sementara
+  scale.power_down();       // Masuk ke mode sleep
+  delay(5000);              // Tunggu 5 detik
+  scale.power_up();         // Bangunkan HX711
+}
+
+/*
+ * CATATAN PENTING:
+ * 1. Nilai kalibrasi (103.007 pada contoh) HARUS disesuaikan dengan sensor Anda
+ * 2. Untuk kalibrasi:
+ *    - Letakkan beban diketahui di load cell
+ *    - Baca nilai scale.get_units()
+ *    - Hitung: new_calibration = (nilai_terbaca) / (berat_diketahui)
+ *    - Masukkan nilai tersebut ke scale.set_scale()
+ * 3. Pastikan hanya satu library HX711 yang terinstall
+ * 4. Untuk akurasi maksimal, hindari getaran dan angin saat pengukuran
+ */
