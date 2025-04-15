@@ -1,0 +1,155 @@
+/*
+  TIMBANGAN DIGITAL DENGAN ESP32
+  ==============================
+  
+  Fitur:
+  - Menampilkan berat dari load cell via HX711
+  - OLED 128x32 sebagai display berat
+  - Push button untuk tare (set ulang ke nol)
+  - Komunikasi serial untuk debugging/monitoring
+
+  Komponen:
+  - ESP32
+  - HX711 + Load cell
+  - OLED I2C 128x32
+  - Push button
+
+  Kalibrasi:
+  - Letakkan beban diketahui, baca nilai raw dari Serial Monitor
+  - Hitung: CALIBRATION_FACTOR = nilai_raw / berat_dalam_gram
+*/
+
+// ===== 1. LIBRARY =====
+#include <Arduino.h>
+#include "HX711.h"
+#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+
+// ===== 2. PIN & KONFIGURASI =====
+#define LOADCELL_DOUT_PIN 16   // Pin DOUT HX711
+#define LOADCELL_SCK_PIN  4    // Pin SCK HX711
+#define BUTTON_PIN        19   // Pin push button
+#define SCREEN_WIDTH      128  // Lebar OLED
+#define SCREEN_HEIGHT     32   // Tinggi OLED
+#define OLED_RESET        -1   // Tidak pakai reset
+
+// ===== 3. OBJEK =====
+HX711 scale;
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+
+// ===== 4. VARIABEL =====
+#define CALIBRATION_FACTOR 103.005 // Ganti sesuai hasil kalibrasi Anda
+float weight = 0;
+float lastWeight = 0;
+int buttonState = 0;
+int lastButtonState = 0;
+unsigned long lastDebounceTime = 0;
+unsigned long debounceDelay = 50;
+
+// ===== 5. SETUP =====
+void setup() {
+  Serial.begin(115200); // Monitor serial
+  Serial.println("Memulai timbangan...");
+
+  // OLED setup
+  if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
+    Serial.println("Gagal inisialisasi OLED");
+    while(1);
+  }
+  display.clearDisplay();
+  display.display();
+  delay(500);
+
+  // Tombol setup
+  pinMode(BUTTON_PIN, INPUT_PULLUP); // Tombol menggunakan pull-up
+
+  // HX711 setup
+  scale.begin(LOADCELL_DOUT_PIN, LOADCELL_SCK_PIN);
+  scale.set_scale(CALIBRATION_FACTOR); // Faktor kalibrasi
+  scale.tare(); // Nolkan berat
+
+  // Tampilkan pesan awal
+  display.setTextSize(1);
+  display.setTextColor(SSD1306_WHITE);
+  display.setCursor(0,0);
+  display.println("Timbangan Siap");
+  display.setCursor(0,15);
+  display.println("Tekan tombol utk TARE");
+  display.display();
+  delay(2000);
+}
+
+// ===== 6. TAMPILKAN BERAT DI OLED =====
+void displayWeight(float weight) {
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setCursor(0,0);
+  display.print("Berat:");
+
+  display.setTextSize(2);
+  display.setCursor(0,10);
+  display.print(weight, 1); // 1 angka desimal
+  display.print(" g");
+
+  display.setTextSize(1);
+  display.setCursor(0, 26);
+  display.print("Tare: Tekan Tombol");
+  display.display();
+}
+
+// ===== 7. HANDLE TOMBOL DENGAN DEBOUNCE =====
+void handleButton() {
+  int reading = digitalRead(BUTTON_PIN);
+  
+  if (reading != lastButtonState) {
+    lastDebounceTime = millis();
+  }
+
+  if ((millis() - lastDebounceTime) > debounceDelay) {
+    if (reading != buttonState) {
+      buttonState = reading;
+
+      if (buttonState == LOW) {
+        Serial.println("TARE ditekan");
+        scale.tare();
+
+        display.clearDisplay();
+        display.setTextSize(1);
+        display.setCursor(0,10);
+        display.println("Berat disetel ke nol");
+        display.display();
+        delay(500);
+      }
+    }
+  }
+  lastButtonState = reading;
+}
+
+// ===== 8. LOOP UTAMA =====
+void loop() {
+  handleButton(); // Cek apakah tombol ditekan
+
+  if (scale.wait_ready_timeout(200)) {
+    weight = scale.get_units(3); // Ambil nilai rata-rata 3x
+
+    if (abs(weight - lastWeight) >= 0.1) { // Jika ada perubahan ≥ 0.1g
+      Serial.print("Berat: ");
+      Serial.print(weight, 1);
+      Serial.println(" g");
+
+      displayWeight(weight);
+      lastWeight = weight;
+    }
+  } else {
+    Serial.println("Sensor tidak terdeteksi!");
+    display.clearDisplay();
+    display.setTextSize(1);
+    display.setCursor(0,10);
+    display.println("Sensor tidak terdeteksi");
+    display.display();
+  }
+
+  delay(100); // Delay antar pembacaan
+}
+
