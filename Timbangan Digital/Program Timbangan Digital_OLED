@@ -1,0 +1,211 @@
+/*
+  TIMBANGAN DIGITAL DENGAN ESP32
+  =============================
+  
+  Fitur:
+  - Membaca berat dari load cell menggunakan HX711
+  - Menampilkan hasil pada OLED 128x32
+  - Tombol tare untuk mengkalibrasi titik nol
+  - Komunikasi serial untuk monitoring
+  
+  Komponen:
+  - ESP32
+  - Load cell + HX711
+  - OLED display 128x32 I2C
+  - Push button
+  
+  Pin Configuration:
+  - HX711 DOUT -> GPIO16
+  - HX711 SCK  -> GPIO4
+  - OLED SDA   -> GPIO21 (default I2C)
+  - OLED SCL   -> GPIO22 (default I2C)
+  - Button     -> GPIO19 dengan internal pull-up
+  
+  Kalibrasi:
+  - Sesuaikan CALIBRATION_FACTOR dengan sensor Anda
+  - Untuk kalibrasi: 
+    1. Letakkan beban diketahui di load cell
+    2. Baca nilai raw dari serial monitor
+    3. Hitung: CALIBRATION_FACTOR = (nilai_raw)/(berat_diketahui)
+*/
+
+// 1. INCLUDE LIBRARY
+// =================
+#include <Arduino.h>       // Library dasar Arduino
+#include "HX711.h"        // Untuk komunikasi dengan modul HX711
+#include <Wire.h>         // Untuk komunikasi I2C
+#include <Adafruit_GFX.h> // Library dasar grafis
+#include <Adafruit_SSD1306.h> // Library untuk OLED
+
+
+// 2. KONFIGURASI HARDWARE
+// =======================
+
+// 2.1 Konfigurasi HX711 (Load Cell)
+const int LOADCELL_DOUT_PIN = 16; // Pin data output dari HX711
+const int LOADCELL_SCK_PIN = 4;   // Pin clock untuk HX711
+HX711 scale; // Objek untuk interfacing dengan HX711
+
+// 2.2 Konfigurasi OLED 128x32
+#define SCREEN_WIDTH 128   // Lebar display dalam pixel
+#define SCREEN_HEIGHT 32   // Tinggi display dalam pixel
+#define OLED_RESET -1      // Pin reset (-1 jika tidak digunakan)
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+
+// 2.3 Konfigurasi Button
+#define BUTTON_PIN 19      // Pin untuk push button
+int buttonState = 0;       // State tombol saat ini
+int lastButtonState = 0;   // State tombol sebelumnya
+unsigned long lastDebounceTime = 0; // Waktu terakhir perubahan state
+unsigned long debounceDelay = 50;   // Waktu debounce (ms)
+
+// 2.4 Faktor Kalibrasi
+#define CALIBRATION_FACTOR 103.005 // HARUS disesuaikan dengan sensor Anda!
+/* 
+ * Cara mendapatkan nilai kalibrasi:
+ * 1. Letakkan beban dengan berat diketahui (misal 100g)
+ * 2. Baca nilai dari serial monitor (tanpa kalibrasi)
+ * 3. Hitung: CALIBRATION_FACTOR = (nilai_terbaca)/(berat_diketahui)
+ */
+
+
+// 3. VARIABEL GLOBAL
+// ==================
+float weight = 0;      // Nilai berat terkini
+float lastWeight = 0;  // Nilai berat sebelumnya (untuk komparasi)
+
+
+// 4. FUNGSI SETUP (DIJALANKAN SEKALI SAAT START)
+// ==============================================
+void setup() {
+  // 4.1 Inisialisasi Serial Monitor
+  Serial.begin(115200);
+  Serial.println("Memulai timbangan digital...");
+  
+  // 4.2 Inisialisasi OLED Display
+  if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
+    Serial.println(F("Gagal menginisialisasi OLED"));
+    while(1); // Stop program jika OLED gagal
+  }
+  display.clearDisplay();
+  display.display();
+  delay(1000); // Jeda untuk stabilisasi
+  
+  // 4.3 Inisialisasi Tombol (dengan internal pull-up)
+  pinMode(BUTTON_PIN, INPUT_PULLUP);
+  
+  // 4.4 Inisialisasi Load Cell
+  Serial.println("Menginisialisasi timbangan...");
+  scale.begin(LOADCELL_DOUT_PIN, LOADCELL_SCK_PIN);
+  scale.set_scale(CALIBRATION_FACTOR); // Set faktor kalibrasi
+  scale.tare(); // Reset timbangan ke posisi nol
+  
+  // 4.5 Tampilkan Pesan Awal di OLED
+  display.clearDisplay();
+  display.setTextSize(1); // Ukuran teks kecil
+  display.setTextColor(SSD1306_WHITE); // Warna teks putih
+  display.setCursor(0,0); // Posisi kursor (x,y)
+  display.println("Timbangan Digital"); // Baris pertama
+  display.setCursor(0,20); // Pindah ke baris bawah
+  display.println("Tekan tombol utk tare"); // Instruksi
+  display.display(); // Kirim ke display
+  delay(2000); // Tampilkan pesan selama 2 detik
+}
+
+
+// 5. FUNGSI UNTUK MENAMPILKAN BERAT DI OLED
+// =========================================
+void displayWeight(float weight) {
+  display.clearDisplay(); // Bersihkan display
+  
+  // 5.1 Header/Tajuk
+  display.setTextSize(1); // Ukuran teks kecil
+  display.setCursor(0,0); // Posisi di pojok kiri atas
+  display.print("Berat:"); // Label
+  
+  // 5.2 Nilai Berat (besar, 1 digit desimal)
+  display.setTextSize(2); // Ukuran teks besar
+  display.setCursor(0,10); // Posisi di tengah
+  display.print(weight, 1); // Tampilkan berat dengan 1 desimal
+  display.print(" g"); // Satuan gram
+  
+  // 5.3 Footer/Instruksi
+  display.setTextSize(1); // Kembali ke teks kecil
+  display.setCursor(0,25); // Posisi di bawah
+  display.print("Tare: Tekan Tombol"); // Instruksi tare
+  
+  display.display(); // Kirim semua ke display
+}
+
+
+// 6. FUNGSI UNTUK HANDLE TOMBOL (DENGAN DEBOUNCE)
+// ===============================================
+void handleButton() {
+  // 6.1 Baca state tombol
+  int reading = digitalRead(BUTTON_PIN);
+  
+  // 6.2 Deteksi perubahan state
+  if (reading != lastButtonState) {
+    lastDebounceTime = millis(); // Catat waktu perubahan
+  }
+  
+  // 6.3 Proses debounce (50ms)
+  if ((millis() - lastDebounceTime) > debounceDelay) {
+    // Jika state berubah
+    if (reading != buttonState) {
+      buttonState = reading;
+      
+      // 6.4 Jika tombol ditekan (LOW karena pull-up)
+      if (buttonState == LOW) {
+        Serial.println("Tombol ditekan - Tare...");
+        scale.tare(); // Reset timbangan ke nol
+        
+        // Tampilkan pesan konfirmasi
+        display.clearDisplay();
+        display.setTextSize(1);
+        display.setCursor(0,10);
+        display.println("Mengatur ke nol...");
+        display.display();
+        delay(500); // Tampilkan pesan selama 0.5 detik
+      }
+    }
+  }
+  
+  // 6.5 Simpan state terakhir
+  lastButtonState = reading;
+}
+
+
+// 7. FUNGSI LOOP (DIJALANKAN BERULANG)
+// ====================================
+void loop() {
+  // 7.1 Handle input tombol
+  handleButton();
+  
+  // 7.2 Baca berat jika sensor siap (timeout 200ms)
+  if (scale.wait_ready_timeout(200)) {
+    // Dapatkan nilai berat (rata-rata 3 pembacaan)
+    weight = scale.get_units(3); 
+    
+    // 7.3 Tampilkan hanya jika ada perubahan ≥ 0.1g
+    if (abs(weight - lastWeight) >= 0.1) {
+      Serial.print("Berat: ");
+      Serial.print(weight, 1); // 1 digit desimal
+      Serial.println(" g");
+      
+      displayWeight(weight); // Update tampilan OLED
+      lastWeight = weight;   // Simpan nilai terakhir
+    }
+  }
+  else {
+    // 7.4 Jika sensor tidak terdeteksi
+    Serial.println("HX711 tidak terdeteksi!");
+    display.clearDisplay();
+    display.setTextSize(1);
+    display.setCursor(0,10);
+    display.println("Sensor tidak terdeteksi");
+    display.display();
+  }
+  
+  delay(100); // Jeda singkat antara pembacaan
+}
