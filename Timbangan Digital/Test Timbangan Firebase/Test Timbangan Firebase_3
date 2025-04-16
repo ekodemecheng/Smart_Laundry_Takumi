@@ -1,0 +1,233 @@
+// Program NodeMCU ESP8266
+#include <ArduinoJson.h>
+#if defined(ESP32)
+#include <WiFi.h>
+#elif defined(ESP8266)
+#include <ESP8266WiFi.h>
+#endif
+#include <Firebase_ESP_Client.h>
+
+// Provide the token generation process info.
+#include <addons/TokenHelper.h>
+
+// Provide the RTDB payload printing info and other helper functions.
+#include <addons/RTDBHelper.h>
+
+/* 1. Define the WiFi credentials */
+#define WIFI_SSID "iPhone Demecheng"
+#define WIFI_PASSWORD "masukkan"
+
+// For the following credentials, see
+examples/Authentications/SignInAsUser/EmailPassword/EmailPassword.ino
+
+/* 2. Define the API Key */
+#define API_KEY "AIzaSyDwSw2iqtFbFvar_93MulS2bBs4Ka33FgA"
+
+/* 3. Define the RTDB URL */
+#define DATABASE_URL "https://timbangan-digital-eko-default-rtdb.asia-southeast1.firebasedatabase.app/" 
+
+//<databaseName>.firebaseio.com or
+<databaseName>.<region>.firebasedatabase.app
+
+/* 4. Define the user Email and password that alreadey registerd or added in
+your project */
+#define USER_EMAIL "kurniawan.eko1886@gmail.com"
+#define USER_PASSWORD "Timbangan"
+
+// Define Firebase Data object
+FirebaseData fbdo;
+FirebaseAuth auth;
+FirebaseConfig config;
+unsigned long sendDataPrevMillis = 0;
+int count = 0;
+int flag_fb = 0;
+int id = 0;
+int berat = 0;
+int estimasi = 0;
+long harga = 0;
+const char *jenis;
+const char *penyerahan;
+const char *pengambilan;
+
+void setup()
+{
+  Serial.begin(115200);
+  Serial.println();
+  Serial.println();
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  Serial.print("Connecting to Wi-Fi");
+  while (WiFi.status() != WL_CONNECTED)
+  {
+    Serial.print(".");
+    delay(300);
+  }
+  Serial.println();
+  Serial.print("Connected with IP: ");
+  Serial.println(WiFi.localIP());
+  Serial.println();
+
+  Serial.printf("Firebase Client v%s\n\n", FIREBASE_CLIENT_VERSION);
+
+  /* Assign the api key (required) */
+  config.api_key = API_KEY;
+
+  /* Assign the user sign in credentials */
+  auth.user.email = USER_EMAIL;
+  auth.user.password = USER_PASSWORD;
+
+  /* Assign the RTDB URL (required) */
+  config.database_url = DATABASE_URL;
+
+  /* Assign the callback function for the long running token generation task */
+  config.token_status_callback = tokenStatusCallback; // see addons/TokenHelper.h
+
+  // Or use legacy authenticate method
+  // config.database_url = DATABASE_URL;
+  // config.signer.tokens.legacy_token = "<database secret>";
+
+  // To connect without auth in Test Mode, see Authentications/TestMode/TestMode.ino
+
+  Firebase.begin(&config, &auth);
+
+  Firebase.reconnectWiFi(true);
+
+#if defined(ESP8266)
+  fbdo.setBSSLBufferSize(512, 2048);
+#endif
+}
+
+void loop()
+{
+  // Firebase.ready() should be called repeatedly to handle authentication tasks.
+  
+  // Check if the other Arduino is transmitting
+  if (Serial.available())
+  {
+    // Allocate the JSON document
+    // This one must be bigger than for the sender because it must store the strings
+    StaticJsonDocument<256> doc;
+
+    // Read the JSON document from the "link" serial port
+    DeserializationError err = deserializeJson(doc, Serial);
+
+    if (err == DeserializationError::Ok)
+    {
+      id = doc["id"];
+      pengambilan = doc["dayF"];
+      penyerahan = doc["dayn"];
+      jenis = doc["jns"];
+      estimasi = doc["est"];
+      berat = doc["brt"];
+      harga = doc["hrg"];
+      flag_fb = 1;
+    }
+    else
+    {
+      // Print error to the "debug" serial port
+      Serial.print("deserializeJson() returned ");
+      Serial.println(err.c_str());
+
+      // Flush all bytes in the "link" serial port buffer
+      while (Serial.available() > 0)
+        Serial.read();
+    }
+  }
+
+  if (flag_fb && Firebase.ready()) {
+    String nowUsername;
+    String folder;
+    String alamat;
+    String email;
+    String nama;
+    String ponsel;
+
+    if (Firebase.RTDB.getString(&fbdo, "/nowUsername")) {
+      if (fbdo.dataTypeEnum() == fb_esp_rtdb_data_type_string) {
+        nowUsername = fbdo.to<String>();
+        Serial.println(nowUsername);
+
+        folder = "/Customer/" + String(nowUsername) + "/alamat";
+        // sprintf(folder, "/Customer/%s/alamat", nowUsername);
+        if (Firebase.RTDB.getString(&fbdo, folder)) {
+          if (fbdo.dataTypeEnum() == fb_esp_rtdb_data_type_string) {
+            alamat = fbdo.to<String>();
+            Serial.println(alamat);
+          }
+        } else {
+          Serial.println(fbdo.errorReason());
+        }
+
+        folder = "/Customer/" + String(nowUsername) + "/email";
+        // sprintf(folder, "/Customer/%s/email", nowUsername);
+        if (Firebase.RTDB.getString(&fbdo, folder)) {
+          if (fbdo.dataTypeEnum() == fb_esp_rtdb_data_type_string) {
+            email = fbdo.to<String>();
+            Serial.println(email);
+          }
+        } else {
+          Serial.println(fbdo.errorReason());
+        }
+
+        folder = "/Customer/" + String(nowUsername) + "/nama";
+        // sprintf(folder, "/Customer/%s/nama", nowUsername);
+        if (Firebase.RTDB.getString(&fbdo, folder)) {
+          if (fbdo.dataTypeEnum() == fb_esp_rtdb_data_type_string) {
+            nama = fbdo.to<String>();
+            Serial.println(nama);
+          }
+        } else {
+          Serial.println(fbdo.errorReason());
+        }
+
+        folder = "/Customer/" + String(nowUsername) + "/ponsel";
+        // sprintf(folder, "/Customer/%s/ponsel", nowUsername);
+        if (Firebase.RTDB.getString(&fbdo, folder)) {
+          if (fbdo.dataTypeEnum() == fb_esp_rtdb_data_type_string) {
+            ponsel = fbdo.to<String>();
+            Serial.println(ponsel);
+          }
+        } else {
+          Serial.println(fbdo.errorReason());
+        }
+      }
+    } else {
+      Serial.println(fbdo.errorReason());
+    }
+    // sprintf(folder, "/Transaksi/%s/alamat", id);
+    folder = "/Transaksi/" + String(id) + "/alamat";
+    Firebase.RTDB.setStringAsync(&fbdo, folder, alamat);
+    // sprintf(folder, "/Transaksi/%s/email", id);
+    folder = "/Transaksi/" + String(id) + "/email";
+    Firebase.RTDB.setStringAsync(&fbdo, folder, email);
+    // sprintf(folder, "/Transaksi/%s/nama", id);
+    folder = "/Transaksi/" + String(id) + "/nama";
+    Firebase.RTDB.setStringAsync(&fbdo, folder, nama);
+    // sprintf(folder, "/Transaksi/%s/ponsel", id);
+    folder = "/Transaksi/" + String(id) + "/ponsel";
+    Firebase.RTDB.setStringAsync(&fbdo, folder, ponsel);
+
+    // sprintf(folder, "/Transaksi/%s/id", id);
+    folder = "/Transaksi/" + String(id) + "/id";
+    Firebase.RTDB.setIntAsync(&fbdo, folder, id);
+    // sprintf(folder, "/Transaksi/%s/berat", id);
+    folder = "/Transaksi/" + String(id) + "/berat";
+    Firebase.RTDB.setIntAsync(&fbdo, folder, berat);
+    // sprintf(folder, "/Transaksi/%s/estimasi", id);
+    folder = "/Transaksi/" + String(id) + "/estimasi";
+    Firebase.RTDB.setIntAsync(&fbdo, folder, estimasi);
+    // sprintf(folder, "/Transaksi/%s/harga", id);
+    folder = "/Transaksi/" + String(id) + "/harga";
+    Firebase.RTDB.setIntAsync(&fbdo, folder, harga);
+    // sprintf(folder, "/Transaksi/%s/jenis", id);
+    folder = "/Transaksi/" + String(id) + "/jenis";
+    Firebase.RTDB.setStringAsync(&fbdo, folder, String(jenis));
+    // sprintf(folder, "/Transaksi/%s/penyerahan", id);
+    folder = "/Transaksi/" + String(id) + "/penyerahan";
+    Firebase.RTDB.setStringAsync(&fbdo, folder, String(penyerahan));
+    // sprintf(folder, "/Transaksi/%s/pengambilan", id);
+    folder = "/Transaksi/" + String(id) + "/pengambilan";
+    Firebase.RTDB.setStringAsync(&fbdo, folder, String(pengambilan));
+    flag_fb = 0;
+  }
+}
+
