@@ -1,0 +1,194 @@
+/*
+  TIMBANGAN DIGITAL + FIREBASE
+  =============================
+  - Load Cell (HX711)
+  - OLED 128x32 I2C
+  - Tare Button
+  - Upload berat ke Firebase Realtime Database
+*/
+
+#include <Arduino.h>
+#if defined(ESP32)
+  #include <WiFi.h>
+#elif defined(ESP8266)
+  #include <ESP8266WiFi.h>
+#endif
+#include <Firebase_ESP_Client.h>
+#include "HX711.h"
+#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+
+//Provide the token generation process info.
+#include "addons/TokenHelper.h"
+//Provide the RTDB payload printing info and other helper functions.
+#include "addons/RTDBHelper.h"
+
+
+// ======== WiFi & Firebase Credentials ========
+#define WIFI_SSID "iPhone Demecheng"
+#define WIFI_PASSWORD "masukkan"
+
+// Insert Firebase project API Key
+#define API_KEY "AIzaSyDwSw2iqtFbFvar_93MulS2bBs4Ka33FgA"
+
+// Insert RTDB URLefine the RTDB URL */
+#define DATABASE_URL "https://timbangan-digital-eko-default-rtdb.asia-southeast1.firebasedatabase.app/"
+
+// =============================================
+
+// HX711 Pins
+const int LOADCELL_DOUT_PIN = 16;
+const int LOADCELL_SCK_PIN = 4;
+HX711 scale;
+
+// OLED 128x32 Config
+#define SCREEN_WIDTH 128
+#define SCREEN_HEIGHT 32
+#define OLED_RESET -1
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+
+// Tare Button
+#define BUTTON_PIN 19
+int buttonState = 0;
+int lastButtonState = 0;
+unsigned long lastDebounceTime = 0;
+unsigned long debounceDelay = 50;
+
+// Kalibrasi (ubah sesuai hasil kalibrasi Anda)
+#define CALIBRATION_FACTOR 103.005
+
+float weight = 0;
+float lastWeight = 0;
+
+// Firebase Setup
+FirebaseData fbdo;
+FirebaseAuth auth;
+FirebaseConfig config;
+
+void connectWiFi() {
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  Serial.print("Menghubungkan WiFi...");
+  while (WiFi.status() != WL_CONNECTED) {
+    Serial.print(".");
+    delay(500);
+  }
+  Serial.println("\nWiFi terhubung!");
+}
+
+void setupFirebase() {
+  config.api_key = API_KEY;
+  config.database_url = DATABASE_URL;
+  Firebase.begin(&config, &auth);
+  Firebase.reconnectWiFi(true);
+}
+
+// Display berat di OLED
+void displayWeight(float weight) {
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setCursor(0, 0);
+  display.print("Berat:");
+  display.setTextSize(2);
+  display.setCursor(0, 10);
+  display.print(weight, 1);
+  display.print(" g");
+  display.setTextSize(1);
+  display.setCursor(0, 25);
+  display.print("Tare: Tekan Tombol");
+  display.display();
+}
+
+// Tombol tare
+void handleButton() {
+  int reading = digitalRead(BUTTON_PIN);
+  if (reading != lastButtonState) {
+    lastDebounceTime = millis();
+  }
+  if ((millis() - lastDebounceTime) > debounceDelay) {
+    if (reading != buttonState) {
+      buttonState = reading;
+      if (buttonState == LOW) {
+        Serial.println("Tombol ditekan - Tare...");
+        scale.tare();
+        display.clearDisplay();
+        display.setTextSize(1);
+        display.setCursor(0, 10);
+        display.println("Mengatur ke nol...");
+        display.display();
+        delay(500);
+      }
+    }
+  }
+  lastButtonState = reading;
+}
+
+void setup() {
+  Serial.begin(115200);
+  delay(500);
+
+  // OLED
+  if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
+    Serial.println("Gagal inisialisasi OLED");
+    while (1);
+  }
+
+  // Button
+  pinMode(BUTTON_PIN, INPUT_PULLUP);
+
+  // Load Cell
+  scale.begin(LOADCELL_DOUT_PIN, LOADCELL_SCK_PIN);
+  scale.set_scale(CALIBRATION_FACTOR);
+  scale.tare();
+
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setCursor(0, 0);
+  display.println("Timbangan Digital");
+  display.setCursor(0, 20);
+  display.println("Menghubungkan WiFi...");
+  display.display();
+
+  connectWiFi();
+  setupFirebase();
+
+  display.clearDisplay();
+  display.setCursor(0, 0);
+  display.println("Siap digunakan");
+  display.setCursor(0, 20);
+  display.println("Tekan tombol tare");
+  display.display();
+  delay(2000);
+}
+
+void loop() {
+  handleButton();
+
+  if (scale.wait_ready_timeout(200)) {
+    weight = scale.get_units(3);
+    if (abs(weight - lastWeight) >= 0.1) {
+      Serial.print("Berat: ");
+      Serial.print(weight, 1);
+      Serial.println(" g");
+
+      displayWeight(weight);
+      lastWeight = weight;
+
+      // === KIRIM KE FIREBASE ===
+      if (Firebase.ready()) {
+        String path = "/timbangan";
+        Firebase.RTDB.setFloat(&fbdo, path + "/berat", weight);
+        Firebase.RTDB.setInt(&fbdo, path + "/timestamp", millis());
+      }
+    }
+  } else {
+    Serial.println("HX711 tidak terdeteksi!");
+    display.clearDisplay();
+    display.setCursor(0, 10);
+    display.println("Sensor tidak terdeteksi");
+    display.display();
+  }
+
+  delay(100);
+}
+
