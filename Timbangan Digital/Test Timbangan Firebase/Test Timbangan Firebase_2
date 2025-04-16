@@ -1,0 +1,146 @@
+#include <WiFi.h>
+#include <Firebase_ESP_Client.h>
+#include "HX711.h"
+#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+
+// ====== GANTI DENGAN WIFI & FIREBASE KAMU ======
+#define WIFI_SSID "iPhone Demecheng"
+#define WIFI_PASSWORD "masukkan"
+#define API_KEY "AIzaSyDwSw2iqtFbFvar_93MulS2bBs4Ka33FgA"
+#define DATABASE_URL "https://timbangan-digital-eko-default-rtdb.asia-southeast1.firebasedatabase.app/"
+// ==================================================
+
+// HX711
+#define DOUT 16
+#define SCK 4
+#define CALIBRATION_FACTOR 103.005
+HX711 scale;
+
+// OLED
+#define SCREEN_WIDTH 128
+#define SCREEN_HEIGHT 32
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
+
+// Tombol tare
+#define TARE_BUTTON 19
+
+// Firebase
+FirebaseData fbdo;
+FirebaseAuth auth;
+FirebaseConfig config;
+
+// Timbangan
+float weight = 0;
+float lastWeight = 0;
+const float threshold = 0.2;
+
+// Timer
+unsigned long lastUploadTime = 0;
+const unsigned long uploadInterval = 3000; // 3 detik
+
+void connectWiFi() {
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  display.clearDisplay();
+  display.setCursor(0, 0);
+  display.println("Menghubungkan WiFi...");
+  display.display();
+
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+
+  display.clearDisplay();
+  display.setCursor(0, 0);
+  display.println("WiFi Terhubung!");
+  display.display();
+  delay(1000);
+}
+
+void setupFirebase() {
+  config.api_key = API_KEY;
+  config.database_url = DATABASE_URL;
+  Firebase.begin(&config, &auth);
+  Firebase.reconnectWiFi(true);
+}
+
+void displayBerat(float berat) {
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setCursor(0, 0);
+  display.print("Berat: ");
+  display.setTextSize(2);
+  display.setCursor(0, 10);
+  display.print(berat, 1);
+  display.print(" g");
+  display.display();
+}
+
+void setup() {
+  Serial.begin(115200);
+
+  if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
+    Serial.println("OLED gagal!");
+    while (true);
+  }
+
+  pinMode(TARE_BUTTON, INPUT_PULLUP);
+
+  scale.begin(DOUT, SCK);
+  scale.set_scale(CALIBRATION_FACTOR);
+  scale.tare();
+
+  connectWiFi();
+  setupFirebase();
+
+  display.clearDisplay();
+  display.setCursor(0, 0);
+  display.println("Timbangan Siap");
+  display.setCursor(0, 20);
+  display.println("Tekan Tombol Tare");
+  display.display();
+  delay(1500);
+}
+
+void loop() {
+  // Tombol tare
+  if (digitalRead(TARE_BUTTON) == LOW) {
+    scale.tare();
+    display.clearDisplay();
+    display.setCursor(0, 10);
+    display.println("Tare... 0 g");
+    display.display();
+    delay(1000);
+  }
+
+  if (scale.wait_ready_timeout(200)) {
+    weight = scale.get_units(5);
+
+    if (abs(weight - lastWeight) > threshold) {
+      displayBerat(weight);
+      lastWeight = weight;
+    }
+
+    unsigned long currentMillis = millis();
+    if (Firebase.ready() && (currentMillis - lastUploadTime >= uploadInterval)) {
+      lastUploadTime = currentMillis;
+
+      Serial.print("Upload: ");
+      Serial.print(weight, 1);
+      Serial.println(" g");
+
+      Firebase.RTDB.setFloat(&fbdo, "/timbangan/berat", weight);
+      Firebase.RTDB.setInt(&fbdo, "/timbangan/timestamp", currentMillis);
+    }
+
+  } else {
+    Serial.println("Sensor HX711 tidak terbaca!");
+    display.clearDisplay();
+    display.setCursor(0, 10);
+    display.println("Sensor Error");
+    display.display();
+    delay(1000);
+  }
+}
