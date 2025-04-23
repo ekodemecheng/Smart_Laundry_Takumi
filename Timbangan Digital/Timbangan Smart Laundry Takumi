@@ -1,5 +1,5 @@
 // Timbangan Digital IoT - Takumi smart laundry
-// ESP32 + Loadcell HX711 + OLED + Time
+// ESP32 + Loadcell HX711 + OLED + Time + weight in kg
 
 #include <Arduino.h>
 #include <Wire.h>
