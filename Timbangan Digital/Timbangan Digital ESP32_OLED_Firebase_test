@@ -1,0 +1,135 @@
+// Update program Timbangan
+
+#include <Arduino.h>
+#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+#include <HX711.h>
+#include <WiFi.h>
+#include <Firebase_ESP_Client.h>
+#include "addons/TokenHelper.h"
+#include "addons/RTDBHelper.h"
+
+// ===================== HX711 Configuration =====================
+#define LOADCELL_DOUT_PIN  16  // DT pin
+#define LOADCELL_SCK_PIN   4  // SCK pin
+#define CALIBRATION_FACTOR 103.005  // Adjusted calibration factor
+HX711 scale;
+float weight = 0;
+
+// ===================== OLED Configuration =====================
+#define SCREEN_WIDTH    128
+#define SCREEN_HEIGHT   32
+#define OLED_RESET      -1
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+
+// ===================== Tare Button Configuration =====================
+#define BUTTON_PIN      19  // GPIO 4 for tare button
+bool lastButtonState = HIGH;
+bool tareRequested = false;
+
+// ===================== WiFi Configuration =====================
+#define WIFI_SSID       "iPhone Demecheng"
+#define WIFI_PASSWORD   "masukkan"
+
+// ===================== Firebase Configuration =====================
+#define API_KEY         "AIzaSyDwSw2iqtFbFvar_93MulS2bBs4Ka33FgA"
+#define DATABASE_URL    "https://timbangan-digital-eko-default-rtdb.asia-southeast1.firebasedatabase.app/"
+FirebaseData fbdo;
+FirebaseAuth auth;
+FirebaseConfig config;
+
+unsigned long sendDataPrevMillis = 0;
+bool signupOK = false;
+
+// ===================== Setup =====================
+void setup() {
+  Serial.begin(115200);
+
+  // Initialize OLED
+  if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {  // I2C address 0x3C
+    Serial.println(F("OLED failed"));
+    while (1);
+  }
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setTextColor(SSD1306_WHITE);
+  display.setCursor(0, 0);
+  display.println("Initializing...");
+  display.display();
+  delay(2000);
+
+  // Initialize HX711 with calibrated factor
+  scale.begin(LOADCELL_DOUT_PIN, LOADCELL_SCK_PIN);
+  scale.set_scale(CALIBRATION_FACTOR);  // Use defined calibration factor
+  scale.tare();  // Reset to zero
+
+  // Initialize Tare Button (Internal Pullup)
+  pinMode(BUTTON_PIN, INPUT_PULLUP);
+
+  // Connect to WiFi
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  Serial.print("Connecting to WiFi");
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("\nConnected!");
+
+  // Initialize Firebase
+  config.api_key = API_KEY;
+  config.database_url = DATABASE_URL;
+  if (Firebase.signUp(&config, &auth, "", "")) {
+    signupOK = true;
+  } else {
+    Serial.printf("Firebase signup failed: %s\n", config.signer.signupError.message.c_str());
+  }
+  Firebase.begin(&config, &auth);
+  Firebase.reconnectWiFi(true);
+}
+
+// ===================== Loop =====================
+void loop() {
+  // Check Tare Button (Debounced)
+  bool currentButtonState = digitalRead(BUTTON_PIN);
+  if (currentButtonState == LOW && lastButtonState == HIGH) {
+    tareRequested = true;
+    delay(50);  // Debounce
+  }
+  lastButtonState = currentButtonState;
+
+  // Tare if button pressed
+  if (tareRequested) {
+    scale.tare();
+    Serial.println("Tare done");
+    tareRequested = false;
+  }
+
+  // Read Weight (Average 5 readings)
+  weight = scale.get_units(5);
+  Serial.print("Weight: ");
+  Serial.print(weight, 1);  // 1 decimal place
+  Serial.println(" g");
+
+  // Update OLED Display
+  display.clearDisplay();
+  display.setCursor(0, 0);
+  display.print("Weight: ");
+  display.print(weight, 1);
+  display.print(" g");
+  display.setCursor(0, 20);
+  display.print("Press to TARE");
+  display.display();
+
+  // Send to Firebase (Every 5 seconds)
+  if (Firebase.ready() && (millis() - sendDataPrevMillis > 5000 || sendDataPrevMillis == 0)) {
+    sendDataPrevMillis = millis();
+    if (Firebase.RTDB.setFloat(&fbdo, "/sensor/weight", weight)) {
+      Serial.println("Data sent to Firebase");
+    } else {
+      Serial.println("Error: " + fbdo.errorReason());
+    }
+  }
+
+  delay(100);  // Small delay to stabilize readings
+}
