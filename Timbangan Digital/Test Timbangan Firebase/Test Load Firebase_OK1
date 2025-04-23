@@ -1,0 +1,71 @@
+#include <Arduino.h>
+#include <HX711.h>
+#include <WiFi.h>
+#include <Firebase_ESP_Client.h>
+#include "addons/TokenHelper.h"
+#include "addons/RTDBHelper.h"
+
+// HX711 Configuration
+#define LOADCELL_DOUT_PIN 16
+#define LOADCELL_SCK_PIN 4
+HX711 scale;
+float calibration_factor = 103.005; // Adjust based on calibration
+
+// Wi-Fi Credentials
+#define WIFI_SSID "iPhone Demecheng"
+#define WIFI_PASSWORD "masukkan"
+
+// Firebase Configuration
+#define API_KEY "AIzaSyDwSw2iqtFbFvar_93MulS2bBs4Ka33FgA"
+#define DATABASE_URL "https://timbangan-digital-eko-default-rtdb.asia-southeast1.firebasedatabase.app/"
+FirebaseData fbdo;
+FirebaseAuth auth;
+FirebaseConfig config;
+
+unsigned long sendDataPrevMillis = 0;
+bool signupOK = false;
+
+void setup() {
+  Serial.begin(115200);
+  scale.begin(LOADCELL_DOUT_PIN, LOADCELL_SCK_PIN);
+  scale.set_scale(calibration_factor);
+  scale.tare(); // Reset to zero
+
+  // Connect to Wi-Fi
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  Serial.print("Connecting to Wi-Fi");
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("\nConnected!");
+
+  // Firebase Initialization
+  config.api_key = API_KEY;
+  config.database_url = DATABASE_URL;
+  if (Firebase.signUp(&config, &auth, "", "")) {
+    signupOK = true;
+  } else {
+    Serial.printf("Firebase signup failed: %s\n", config.signer.signupError.message.c_str());
+  }
+  Firebase.begin(&config, &auth);
+  Firebase.reconnectWiFi(true);
+}
+
+void loop() {
+  if (Firebase.ready() && (millis() - sendDataPrevMillis > 5000 || sendDataPrevMillis == 0)) {
+    sendDataPrevMillis = millis();
+
+    // Read weight (average 5 readings)
+    float weight = scale.get_units(5);
+    Serial.print("Weight: ");
+    Serial.println(weight);
+
+    // Send to Firebase
+    if (Firebase.RTDB.setFloat(&fbdo, "/sensor/weight", weight)) {
+      Serial.println("Data sent to Firebase");
+    } else {
+      Serial.println("Error: " + fbdo.errorReason());
+    }
+  }
+}
