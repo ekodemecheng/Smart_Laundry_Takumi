@@ -1,0 +1,114 @@
+// Mengukur Intensitas Getaran vibration Motor
+
+#include <Arduino.h>
+#include <Wire.h>
+#include <U8g2lib.h>
+#include <MPU6050.h>
+
+// OLED 128x32
+U8G2_SSD1306_128X32_UNIVISION_F_HW_I2C u8g2(U8G2_R0);
+
+// MPU6050
+MPU6050 mpu;
+
+// Motor dan potensiometer
+const int motorPin = 9;
+const int potensiometerPin = A0;
+
+// Kalibrasi offset akselerometer
+float axOffset = 0, ayOffset = 0, azOffset = 0;
+
+// Filter variabel
+float vibFiltered = 0;
+const float alpha = 0.1; // smoothing factor (0.0 - 1.0)
+
+void calibrateMPU6050() {
+  long axSum = 0, aySum = 0, azSum = 0;
+  const int samples = 100;
+
+  for (int i = 0; i < samples; i++) {
+    int16_t ax, ay, az;
+    mpu.getAcceleration(&ax, &ay, &az);
+    axSum += ax;
+    aySum += ay;
+    azSum += az;
+    delay(5);
+  }
+
+  axOffset = axSum / (float)samples;
+  ayOffset = aySum / (float)samples;
+  azOffset = azSum / (float)samples - 16384.0; // dikurangi 1G pada Z
+}
+
+void setup() {
+  u8g2.begin();
+  Serial.begin(9600);
+  while (!Serial);
+
+  pinMode(motorPin, OUTPUT);
+  Wire.begin();
+  mpu.initialize();
+
+  if (!mpu.testConnection()) {
+    Serial.println("MPU6050 connection failed!");
+    while (1);
+  }
+
+  calibrateMPU6050();
+
+  Serial.println("====================================================");
+  Serial.println(" PWM MOTOR | GETARAN (G) | NILAI POTENSIOMETER ");
+  Serial.println("----------------------------------------------------");
+
+  u8g2.clearBuffer();
+  u8g2.setFont(u8g2_font_7x14B_tf);
+  u8g2.drawStr(0, 15, "PWM:");
+  u8g2.drawStr(0, 30, "Vib:");
+  u8g2.sendBuffer();
+}
+
+void loop() {
+  // Baca dan konversi PWM
+  int potValue = analogRead(potensiometerPin);
+  int pwmValue = potValue / 4;
+  analogWrite(motorPin, pwmValue);
+
+  // Baca akselerasi
+  int16_t axRaw, ayRaw, azRaw;
+  mpu.getAcceleration(&axRaw, &ayRaw, &azRaw);
+
+  // Kalibrasi dan hitung vibrasi
+  float ax = (float)(axRaw - axOffset);
+  float ay = (float)(ayRaw - ayOffset);
+  float az = (float)(azRaw - azOffset);
+  float vib = sqrt(ax * ax + ay * ay + az * az) / 16384.0; // dalam G
+
+  // Filter sederhana
+  vibFiltered = alpha * vib + (1 - alpha) * vibFiltered;
+
+  // OLED
+  u8g2.clearBuffer();
+  u8g2.setFont(u8g2_font_7x14B_tf);
+  u8g2.drawStr(0, 15, "PWM:");
+  u8g2.drawStr(0, 30, "Vib:");
+
+  char displayStr[16];
+  sprintf(displayStr, "%3d", pwmValue);
+  u8g2.drawStr(40, 15, displayStr);
+
+  dtostrf(vibFiltered, 4, 2, displayStr);
+  u8g2.drawStr(40, 30, displayStr);
+  u8g2.drawStr(80, 30, "G");
+
+  u8g2.sendBuffer();
+
+  // Serial Monitor
+  Serial.print("    ");
+  Serial.print(pwmValue);
+  Serial.print("     |     ");
+  Serial.print(vibFiltered, 2);
+  Serial.print(" G  |     ");
+  Serial.println(potValue);
+
+  delay(100);
+}
