@@ -1,4 +1,5 @@
 // Mengukur Intensitas Getaran vibration Motor
+// Note: GPIO Arduino to MPU6050 SCL = A5; SDA = A4
 
 #include <Arduino.h>
 #include <Wire.h>
