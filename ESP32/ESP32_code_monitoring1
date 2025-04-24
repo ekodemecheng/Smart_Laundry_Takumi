@@ -1,0 +1,71 @@
+#include <Wire.h>
+#include <MPU6050.h>
+
+MPU6050 mpu;
+
+const int hallSensorPin = 4;   // pin hall effect sensor
+const int buzzerPin = 5;       // pin buzzer
+
+bool doorOpen = false;
+bool isRunning = false;
+bool prevRunningState = false;
+
+float vibrationThreshold = 0.3;
+unsigned long lastVibrationTime = 0;
+const unsigned long gracePeriod = 5000; // 5 detik dalam milidetik
+
+void setup() {
+  Serial.begin(115200);
+  Wire.begin(21, 22); // SDA, SCL
+
+  mpu.initialize();
+  if (!mpu.testConnection()) {
+    Serial.println("MPU6050 connection failed!");
+    while (1);
+  } else {
+    Serial.println("MPU6050 ready.");
+  }
+
+  pinMode(hallSensorPin, INPUT_PULLUP);
+  pinMode(buzzerPin, OUTPUT);
+  digitalWrite(buzzerPin, LOW);
+}
+
+void loop() {
+  int16_t ax, ay, az;
+  mpu.getAcceleration(&ax, &ay, &az);
+
+  float accelX = ax / 16384.0;
+  float accelY = ay / 16384.0;
+  float accelZ = az / 16384.0;
+
+  float vibration = sqrt(accelX * accelX + accelY * accelY + accelZ * accelZ) - 1.0;
+  vibration = fabs(vibration);
+
+  // Jika getaran terdeteksi, perbarui waktu terakhir getaran
+  if (vibration > vibrationThreshold) {
+    lastVibrationTime = millis();
+  }
+
+  // Status In Use tetap aktif selama grace period
+  isRunning = (millis() - lastVibrationTime < gracePeriod);
+
+  // Deteksi pintu terbuka
+  int hallState = digitalRead(hallSensorPin);
+  doorOpen = (hallState == HIGH);
+
+  if (isRunning != prevRunningState) {
+    Serial.println(isRunning ? "✅ Status: Mesin Cuci In Use" : "🟢 Status: Mesin Cuci Available");
+    prevRunningState = isRunning;
+  }
+
+  // Notifikasi jika pintu terbuka saat mesin bekerja
+  if (isRunning && doorOpen) {
+    Serial.println("⚠️ Peringatan: Pintu mesin terbuka saat mesin sedang beroperasi!");
+    digitalWrite(buzzerPin, HIGH);
+  } else {
+    digitalWrite(buzzerPin, LOW);
+  }
+
+  delay(500); // Sampling tiap 500ms
+}
