@@ -1,3 +1,6 @@
+// basic code untuk monitoring status mesin cuci
+// Tips Tambahan:bisa ubah gracePeriod jika mesin kamu berhenti sebentar tapi masih dianggap "in use".
+
 #include <Wire.h>
 #include <MPU6050.h>
 
