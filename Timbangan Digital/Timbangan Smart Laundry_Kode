@@ -1,0 +1,259 @@
+// Timbangan Digital IoT - Takumi smart laundry
+// ESP32 + Loadcell HX711 + OLED + Time + weight in kg
+// Penambahan Kode Unik di generate setiap melakukan penimbangan
+
+#include <Arduino.h>
+#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+#include <HX711.h>
+#include <WiFi.h>
+#include <Firebase_ESP_Client.h>
+#include "addons/TokenHelper.h"
+#include "addons/RTDBHelper.h"
+#include <time.h>
+
+// ===================== Configuration =====================
+#define SCALE_ID "1"
+#define CALIBRATION_FACTOR 103.005
+#define LOADCELL_DOUT_PIN 16
+#define LOADCELL_SCK_PIN 4
+#define BUTTON_PIN 19
+
+// OLED Configuration
+#define SCREEN_WIDTH 128
+#define SCREEN_HEIGHT 32
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
+
+// WiFi Configuration
+#define WIFI_SSID "iPhone Demecheng"
+#define WIFI_PASSWORD "masukkan"
+
+// Firebase Configuration
+#define API_KEY "AIzaSyB7DBFowIMWHbDnLv3NgU07Bo4udHt2h_0"
+#define DATABASE_URL "https://smart-loundry-default-rtdb.asia-southeast1.firebasedatabase.app/"
+
+// NTP Configuration for Indonesia (GMT+7)
+#define NTP_SERVER "id.pool.ntp.org"
+#define GMT_OFFSET_SEC 25200  // 7 * 3600 = 25200 seconds
+#define DAYLIGHT_OFFSET_SEC 0
+
+// ===================== Global Variables =====================
+HX711 scale;
+FirebaseData fbdo;
+FirebaseAuth auth;
+FirebaseConfig config;
+
+float weight_kg = 0;
+unsigned long lastUpdateTime = 0;
+bool lastButtonState = HIGH;
+bool tareRequested = false;
+String currentUniqueCode = "";
+
+// ===================== Setup =====================
+void setup() {
+  Serial.begin(115200);
+  randomSeed(analogRead(0)); // Seed untuk angka random
+  
+  initOLED();
+  initScale();
+  initWiFi();
+  initTime();
+  initFirebase();
+
+  pinMode(BUTTON_PIN, INPUT_PULLUP);
+}
+
+// ===================== Main Loop =====================
+void loop() {
+  // Handle tare button
+  bool currentButtonState = digitalRead(BUTTON_PIN);
+  if (currentButtonState == LOW && lastButtonState == HIGH) {
+    tareRequested = true;
+    delay(50);  // Debounce
+  }
+  lastButtonState = currentButtonState;
+
+  if (tareRequested) {
+    scale.tare();
+    Serial.println("[" + String(SCALE_ID) + "] " + getCurrentTime() + " - Tare completed");
+    updateDisplay(0, true);
+    tareRequested = false;
+  }
+
+  // Read weight
+  float weight_g = scale.get_units(3);
+  weight_kg = weight_g / 1000.0;
+  
+  // Serial output
+  Serial.print("[" + String(SCALE_ID) + "] ");
+  Serial.print(getCurrentTime());
+  Serial.print(" - Weight: ");
+  Serial.print(weight_kg, 3);
+  Serial.println(" kg");
+
+  // Update display
+  static float lastDisplayedWeight = 0;
+  if (abs(weight_kg - lastDisplayedWeight) > 0.01 || millis() - lastUpdateTime > 100) {
+    updateDisplay(weight_kg, false);
+    lastDisplayedWeight = weight_kg;
+    lastUpdateTime = millis();
+  }
+
+  // Send to Firebase
+  static unsigned long lastFirebaseUpdate = 0;
+  static float lastSentWeight = 0;
+  if (Firebase.ready() && (millis() - lastFirebaseUpdate > 5000 || abs(weight_kg - lastSentWeight) > 0.1)) {
+    if (abs(weight_kg - lastSentWeight) > 0.1) { // Hanya kirim jika perubahan berat signifikan (> 0.1 kg)
+      currentUniqueCode = generateUniqueCode(); // Generate kode unik baru
+      sendToFirebase(weight_kg);
+      lastSentWeight = weight_kg;
+    }
+    lastFirebaseUpdate = millis();
+  }
+
+  delay(10);
+}
+
+// ===================== Helper Functions =====================
+void initOLED() {
+  if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
+    Serial.println(F("OLED failed"));
+    while (1);
+  }
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setTextColor(SSD1306_WHITE);
+  display.setCursor(0, 0);
+  display.println("Timbangan ID: " + String(SCALE_ID));
+  display.println("Inisialisasi...");
+  display.display();
+  delay(1000);
+}
+
+void initScale() {
+  scale.begin(LOADCELL_DOUT_PIN, LOADCELL_SCK_PIN);
+  scale.set_scale(CALIBRATION_FACTOR);
+  scale.tare();
+}
+
+void initWiFi() {
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  display.setCursor(0, 16);
+  display.print("Menghubungkan WiFi");
+  display.display();
+  
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    display.print(".");
+    display.display();
+  }
+  
+  display.clearDisplay();
+  display.setCursor(0, 0);
+  display.println("Timbangan ID: " + String(SCALE_ID));
+  display.println("WiFi Terhubung");
+  display.display();
+  delay(1000);
+}
+
+void initTime() {
+  configTime(GMT_OFFSET_SEC, DAYLIGHT_OFFSET_SEC, NTP_SERVER);
+  display.setCursor(0, 16);
+  display.print("Sinkronisasi waktu...");
+  display.display();
+  
+  time_t now = time(nullptr);
+  while (now < 24 * 3600) {
+    delay(500);
+    display.print(".");
+    display.display();
+    now = time(nullptr);
+  }
+  
+  display.clearDisplay();
+  display.setCursor(0, 0);
+  display.println("Timbangan ID: " + String(SCALE_ID));
+  display.println("Waktu: " + getCurrentTime());
+  display.display();
+  delay(1000);
+}
+
+void initFirebase() {
+  config.api_key = API_KEY;
+  config.database_url = DATABASE_URL;
+  
+  if (Firebase.signUp(&config, &auth, "", "")) {
+    Firebase.begin(&config, &auth);
+    Firebase.reconnectWiFi(true);
+    Serial.println("Firebase terhubung");
+  } else {
+    Serial.printf("Gagal menghubungkan Firebase: %s\n", config.signer.signupError.message.c_str());
+  }
+}
+
+String getCurrentTime() {
+  time_t now = time(nullptr);
+  struct tm timeinfo;
+  localtime_r(&now, &timeinfo);
+  
+  char timeStr[25];
+  strftime(timeStr, sizeof(timeStr), "%d-%m-%Y %H:%M:%S", &timeinfo);
+  return String(timeStr);
+}
+
+String generateUniqueCode() {
+  time_t now = time(nullptr);
+  struct tm timeinfo;
+  localtime_r(&now, &timeinfo);
+  
+  char timeCode[15];
+  strftime(timeCode, sizeof(timeCode), "%Y%m%d%H%M%S", &timeinfo);
+  
+  // Tambahkan angka random 4 digit
+  int randomNum = random(1000, 9999);
+  
+  return String(timeCode) + String(randomNum);
+}
+
+void updateDisplay(float weight_kg, bool forceUpdate) {
+  static float lastWeight = 0;
+  
+  if (!forceUpdate && abs(weight_kg - lastWeight) < 0.01) {
+    return;
+  }
+  
+  lastWeight = weight_kg;
+  
+  display.clearDisplay();
+  display.setCursor(0, 0);
+  display.println("Timbangan ID: " + String(SCALE_ID));
+  
+  display.setCursor(0, 10);
+  display.print("Berat: ");
+  display.print(weight_kg, 3);
+  display.print(" kg");
+  
+  display.setCursor(0, 20);
+  display.print(getCurrentTime());
+  
+  display.display();
+}
+
+void sendToFirebase(float weight_kg) {
+  String path = "/timbangan/" + String(SCALE_ID);
+  
+  FirebaseJson json;
+  json.set("berat", weight_kg);
+  json.set("satuan", "kg");
+  json.set("waktu", getCurrentTime());
+  json.set("perusahaan", "Takumi");
+  json.set("kode_unik", currentUniqueCode);
+  
+  if (Firebase.RTDB.setJSON(&fbdo, path.c_str(), &json)) {
+    Serial.println("[" + String(SCALE_ID) + "] " + getCurrentTime() + " - Data terkirim ke Firebase");
+    Serial.println("Kode Unik: " + currentUniqueCode);
+  } else {
+    Serial.println("Error: " + fbdo.errorReason());
+  }
+}
