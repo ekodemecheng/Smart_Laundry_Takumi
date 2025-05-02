@@ -1,5 +1,7 @@
 // Sensor Getaran SW-420
 // Wemos D1 Mini (ESP8266)
+// Apabila ada getaran valid = in use
+// Apabila tidak ada getaran selama 60 detik = available
 
 #include <Wire.h>
 #include <Adafruit_GFX.h>
