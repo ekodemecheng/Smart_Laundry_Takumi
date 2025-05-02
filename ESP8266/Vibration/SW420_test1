@@ -1,0 +1,126 @@
+// Sensor Getaran SW-420
+// Wemos D1 Mini (ESP8266)
+
+#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+
+#define SCREEN_WIDTH 128
+#define SCREEN_HEIGHT 32
+#define OLED_RESET -1
+
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+
+const int vibrationPin = D5; // SW-420 terhubung ke D5 (GPIO14)
+unsigned long lastVibrationTime = 0;
+unsigned long idleStartTime = 0;
+int vibrationCount = 0;
+bool isInUse = false;
+
+// Parameter untuk debounce dan false detection
+const unsigned long DEBOUNCE_DELAY = 50; // ms
+const unsigned long IDLE_TIMEOUT = 60000; // 60 detik
+const unsigned long DISPLAY_UPDATE_INTERVAL = 1000; // ms
+const int REQUIRED_CONSECUTIVE_READS = 3; // Minimal pembacaan berturut-turut
+
+void setup() {
+  Serial.begin(115200);
+  pinMode(vibrationPin, INPUT_PULLUP); // Gunakan internal pull-up
+  
+  // Inisialisasi OLED
+  if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
+    Serial.println(F("OLED gagal terhubung!"));
+    while(1);
+  }
+  
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setTextColor(WHITE);
+  display.setCursor(0,0);
+  display.println("System Ready");
+  display.display();
+  delay(1000);
+  
+  idleStartTime = millis(); // Inisialisasi waktu idle
+  Serial.println("Status: AVAILABLE");
+}
+
+void loop() {
+  static int consecutiveDetections = 0;
+  static bool lastState = digitalRead(vibrationPin);
+  static unsigned long lastDisplayUpdate = 0;
+  static bool wasInUse = false; // Untuk melacak perubahan status
+  
+  bool currentState = digitalRead(vibrationPin);
+  
+  // Deteksi perubahan state
+  if (currentState != lastState) {
+    delay(DEBOUNCE_DELAY); // Debounce
+    currentState = digitalRead(vibrationPin);
+    
+    if (currentState == LOW) { // Getaran terdeteksi (LOW karena pull-up)
+      consecutiveDetections++;
+      
+      // Pastikan deteksi valid (beberapa pembacaan berturut-turut)
+      if (consecutiveDetections >= REQUIRED_CONSECUTIVE_READS) {
+        vibrationCount++;
+        lastVibrationTime = millis();
+        
+        if (!isInUse) {
+          isInUse = true;
+          Serial.println("Getaran valid terdeteksi!");
+          Serial.println("Status: IN USE");
+        }
+        
+        consecutiveDetections = 0; // Reset setelah deteksi valid
+      }
+    } else {
+      consecutiveDetections = 0; // Reset jika state kembali HIGH
+    }
+  }
+  
+  lastState = currentState;
+  
+  // Cek jika sudah idle selama 60 detik
+  if (isInUse && (millis() - lastVibrationTime > IDLE_TIMEOUT)) {
+    isInUse = false;
+    vibrationCount = 0; // Reset counter
+    idleStartTime = millis();
+    Serial.println("Status: AVAILABLE");
+  }
+  
+  // Update tampilan setiap 1 detik untuk menghindari flicker
+  if (millis() - lastDisplayUpdate > DISPLAY_UPDATE_INTERVAL) {
+    lastDisplayUpdate = millis();
+    
+    display.clearDisplay();
+    display.setCursor(0,0);
+    
+    // Tampilkan status
+    if (isInUse) {
+      display.println("Status: IN USE");
+    } else {
+      display.println("Status: AVAILABLE");
+    }
+    
+    // Tampilkan informasi getaran
+    display.setCursor(0,12);
+    display.print("Getaran: ");
+    display.print(vibrationCount);
+    
+    // Tampilkan waktu sejak terakhir aktif
+    display.setCursor(0,22);
+    display.print("Terakhir: ");
+    if (isInUse) {
+      display.print((millis() - lastVibrationTime)/1000);
+      display.print("s");
+    } else {
+      display.print((millis() - idleStartTime)/1000);
+      display.print("s idle");
+    }
+    
+    display.display();
+  }
+  
+  delay(10); // Delay kecil untuk mengurangi beban CPU
+}
