@@ -2,6 +2,7 @@
 // Wemos D1 Mini (ESP8266)
 // Apabila ada getaran berturut-turut selama 30 - 120 detik = in use
 // Apabila tidak ada getaran berturut-turue selama 180 detik = available
+// Modifikasi terhadap deteksi getaran buka/tutup pintu mesin cuci
 // Hasil: Mampu melakukan analisis getaran pada saat mesin cuci beroperasi
 // Getaran Buka/Tutup pintu mesin cuci tidak menghasilkan status IN USE
 // Problem: pada saat mesin masih cuci beroperasi tetapi dalam kondisi idle (tidak ada deteksi getaran) status = AVAILABLE
