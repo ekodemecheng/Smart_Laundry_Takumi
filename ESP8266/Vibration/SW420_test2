@@ -1,0 +1,185 @@
+// Sensor Getaran SW-420
+// Wemos D1 Mini (ESP8266)
+// Apabila ada getaran berturut-turut selama 30 - 120 detik = in use
+// Apabila tidak ada getaran berturut-turue selama 180 detik = available
+// Hasil: Mampu melakukan analisis getaran pada saat mesin cuci beroperasi
+// Getaran Buka/Tutup pintu mesin cuci tidak menghasilkan status IN USE
+// Problem: pada saat mesin masih cuci beroperasi tetapi dalam kondisi idle (tidak ada deteksi getaran) status = AVAILABLE
+// sementara proses pencucian belum selesai
+
+
+
+#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+
+#define SCREEN_WIDTH 128
+#define SCREEN_HEIGHT 32
+#define OLED_RESET -1
+
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+
+const int vibrationPin = D5; // SW-420 connected to D5 (GPIO14)
+unsigned long lastVibrationTime = 0;
+unsigned long firstVibrationTime = 0;
+unsigned long vibrationStartTime = 0;
+unsigned long idleStartTime = 0;
+int vibrationCount = 0;
+bool isInUse = false;
+bool isVibrating = false;
+bool inActivationPeriod = false;
+
+// Parameters
+const unsigned long DEBOUNCE_DELAY = 50; // ms
+const unsigned long MIN_VIBRATION_TIME = 30000; // 30 seconds minimum
+const unsigned long MAX_VIBRATION_WINDOW = 120000; // 120 seconds window
+const unsigned long IDLE_TIMEOUT = 180000; // 180 seconds
+const unsigned long DISPLAY_UPDATE_INTERVAL = 1000; // ms
+const int REQUIRED_CONSECUTIVE_READS = 3; // Minimum consecutive readings
+const unsigned long MAX_VIBRATION_GAP = 2000; // 2 seconds max between vibrations
+
+void setup() {
+  Serial.begin(115200);
+  pinMode(vibrationPin, INPUT_PULLUP); // Use internal pull-up
+  
+  // Initialize OLED
+  if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
+    Serial.println(F("OLED connection failed!"));
+    while(1);
+  }
+  
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setTextColor(WHITE);
+  display.setCursor(0,0);
+  display.println("System Ready");
+  display.display();
+  delay(1000);
+  
+  idleStartTime = millis(); // Initialize idle time
+  Serial.println("Status: AVAILABLE");
+}
+
+void loop() {
+  static int consecutiveDetections = 0;
+  static bool lastState = digitalRead(vibrationPin);
+  static unsigned long lastDisplayUpdate = 0;
+  
+  bool currentState = digitalRead(vibrationPin);
+  
+  // Detect state change
+  if (currentState != lastState) {
+    delay(DEBOUNCE_DELAY); // Debounce
+    currentState = digitalRead(vibrationPin);
+    
+    if (currentState == LOW) { // Vibration detected (LOW because of pull-up)
+      consecutiveDetections++;
+      
+      // Validate detection (multiple consecutive readings)
+      if (consecutiveDetections >= REQUIRED_CONSECUTIVE_READS) {
+        if (!isVibrating) {
+          // Start new vibration period
+          isVibrating = true;
+          firstVibrationTime = millis();
+          
+          if (!inActivationPeriod) {
+            vibrationStartTime = millis();
+            inActivationPeriod = true;
+            Serial.println("Periode aktivasi dimulai");
+          }
+        }
+        
+        vibrationCount++;
+        lastVibrationTime = millis();
+        Serial.println("Getaran terdeteksi!");
+        
+        consecutiveDetections = 0; // Reset after valid detection
+      }
+    } else {
+      consecutiveDetections = 0; // Reset if state returns HIGH
+    }
+  }
+  
+  lastState = currentState;
+  
+  // Check if vibration has stopped
+  if (isVibrating && currentState == HIGH && (millis() - lastVibrationTime > DEBOUNCE_DELAY)) {
+    isVibrating = false;
+  }
+  
+  // Check activation conditions (30-120 seconds of continuous vibration)
+  if (inActivationPeriod) {
+    unsigned long activeVibrationTime = millis() - firstVibrationTime;
+    unsigned long totalWindowTime = millis() - vibrationStartTime;
+    
+    // Check if we've met minimum vibration time
+    if (activeVibrationTime >= MIN_VIBRATION_TIME && !isInUse) {
+      isInUse = true;
+      inActivationPeriod = false;
+      Serial.println("Status: IN USE (Getaran 30-120s terdeteksi)");
+    }
+    
+    // Check if window has expired without meeting requirements
+    if (totalWindowTime > MAX_VIBRATION_WINDOW) {
+      inActivationPeriod = false;
+      Serial.println("Periode aktivasi berakhir (window expired)");
+    }
+    
+    // Check if gap between vibrations is too long
+    if (!isVibrating && (millis() - lastVibrationTime > MAX_VIBRATION_GAP)) {
+      inActivationPeriod = false;
+      Serial.println("Periode aktivasi dibatalkan (gap terlalu lama)");
+    }
+  }
+  
+  // Check idle timeout (120 seconds)
+  if (isInUse && (millis() - lastVibrationTime > IDLE_TIMEOUT)) {
+    isInUse = false;
+    isVibrating = false;
+    inActivationPeriod = false;
+    vibrationCount = 0; // Reset vibration counter
+    idleStartTime = millis();
+    Serial.println("Status: AVAILABLE (Tidak ada getaran 180 detik)");
+  }
+  
+  // Update display every second
+  if (millis() - lastDisplayUpdate > DISPLAY_UPDATE_INTERVAL) {
+    lastDisplayUpdate = millis();
+    
+    display.clearDisplay();
+    display.setCursor(0,0);
+    
+    // Display status
+    display.print("Status: ");
+    if (isInUse) {
+      display.println("IN USE");
+    } else {
+      display.println("AVAILABLE");
+    }
+    
+    // Display vibration information
+    display.setCursor(0,12);
+    display.print("Getaran: ");
+    display.println(vibrationCount);
+    
+    // Display timing information
+    display.setCursor(0,22);
+    if (isInUse) {
+      display.print("Aktif: ");
+      display.print((millis() - lastVibrationTime)/1000);
+      display.print("s");
+    } else if (inActivationPeriod) {
+      display.print("Aktivasi: ");
+      display.print((millis() - vibrationStartTime)/1000);
+      display.print("/120s");
+    } else {
+      display.print("Idle: ");
+      display.print((millis() - idleStartTime)/1000);
+      display.print("s");
+    }
+    
+    display.display();
+  }
+  
+  delay(10); // Small delay to reduce CPU load
+}
