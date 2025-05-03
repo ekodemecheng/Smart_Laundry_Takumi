@@ -1,0 +1,151 @@
+// Sensor Getaran SW-420 -- test4 (Mode Drain+Spin 12 min)
+// Wemos D1 Mini (ESP8266)
+// Menentukan parameter baru:
+// 30–60 detik getaran → IN USE
+// >60–150 detik getaran → PROCESS
+// >150 detik tanpa getaran → AVAILABLE dan hitungan getaran direset
+// Hasil: Mampu mendeteksi getaran dengan lebih baik pada saat mesin cuci beroperasi 
+// pada saat awal proses, kondisi idle, dan akan berhenti dengan rentang kondisi getaran yg berbeda status IN USE
+// pada saat mesin cuci beroperasi dengan getaran yang kontinyu maka status = PROCESS
+// pada saat tidak ada getaran/mesin cuci selesai beroperasi, maka status = AVAILABLE
+// pada saat ada getaran buka/tutup pintu dengan rentang waktu tertentu = AVAILABLE
+
+
+
+#include <Wire.h> 
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+
+#define SCREEN_WIDTH 128
+#define SCREEN_HEIGHT 32
+#define OLED_RESET -1
+
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+
+const int vibrationPin = D5;
+
+unsigned long lastVibrationTime = 0;
+unsigned long firstVibrationTime = 0;
+unsigned long idleStartTime = 0;
+bool isVibrating = false;
+String status = "AVAILABLE";
+
+// Konstanta waktu (ms)
+const unsigned long STARTING_MIN = 30000;   // 30 detik
+const unsigned long STARTING_MAX = 60000;   // 60 detik
+const unsigned long PROCESS_MIN = 60000;    // > 60 detik
+const unsigned long PROCESS_MAX = 150000;   // <= 150 detik
+const unsigned long IDLE_THRESHOLD = 150000; // > 150 detik tanpa getaran
+const unsigned long VIBRATION_GAP = 2000;
+const unsigned long DISPLAY_UPDATE_INTERVAL = 1000;
+
+void setup() {
+  Serial.begin(115200);
+  pinMode(vibrationPin, INPUT_PULLUP);
+
+  if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
+    Serial.println(F("OLED gagal"));
+    while (1);
+  }
+
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setTextColor(WHITE);
+  display.setCursor(0,0);
+  display.println("System Ready");
+  display.display();
+  delay(1000);
+
+  idleStartTime = millis();
+  status = "AVAILABLE";
+  Serial.println("Status: AVAILABLE");
+}
+
+void loop() {
+  static bool lastState = HIGH;
+  static unsigned long lastDisplayUpdate = 0;
+
+  bool currentState = digitalRead(vibrationPin);
+
+  // Debounce sederhana
+  if (currentState != lastState) {
+    delay(20);
+    currentState = digitalRead(vibrationPin);
+  }
+
+  unsigned long now = millis();
+
+  // Jika getaran terdeteksi
+  if (currentState == LOW) {
+    if (!isVibrating) {
+      isVibrating = true;
+      firstVibrationTime = now;
+      Serial.println("Vibration started");
+    }
+    lastVibrationTime = now;
+    idleStartTime = now;
+  }
+
+  // Jika getaran berhenti sementara
+  if (isVibrating && (now - lastVibrationTime > VIBRATION_GAP)) {
+    isVibrating = false;
+    Serial.println("Vibration stopped temporarily");
+  }
+
+  // Status berdasarkan durasi getaran
+  if (isVibrating) {
+    unsigned long vibDuration = now - firstVibrationTime;
+
+    if (vibDuration >= STARTING_MIN && vibDuration <= STARTING_MAX) {
+      if (status != "IN USE") {
+        status = "IN USE";
+        Serial.println("Status: IN USE");
+      }
+    } else if (vibDuration > PROCESS_MIN && vibDuration <= PROCESS_MAX) {
+      if (status != "PROCESS") {
+        status = "PROCESS";
+        Serial.println("Status: PROCESS");
+      }
+    }
+  }
+
+  // Tidak ada getaran dalam >150 detik
+  if (!isVibrating && (now - lastVibrationTime > IDLE_THRESHOLD)) {
+    if (status != "AVAILABLE") {
+      status = "AVAILABLE";
+      Serial.println("Status: AVAILABLE");
+    }
+  }
+
+  // Update tampilan OLED tiap 1 detik
+  if (now - lastDisplayUpdate > DISPLAY_UPDATE_INTERVAL) {
+    lastDisplayUpdate = now;
+    display.clearDisplay();
+    display.setCursor(0, 0);
+    display.print("Status: ");
+    display.println(status);
+
+    display.setCursor(0, 12);
+    display.print("Vibration: ");
+    display.println(digitalRead(vibrationPin) == LOW ? "YES" : "NO");
+
+    display.setCursor(0, 24);
+    display.print("Time: ");
+    display.print((now - (status == "AVAILABLE" ? lastVibrationTime : firstVibrationTime)) / 1000);
+    display.println("s");
+
+    display.display();
+
+    // Log serial
+    Serial.print("Status: ");
+    Serial.print(status);
+    Serial.print(" | Vibration: ");
+    Serial.print(digitalRead(vibrationPin) == LOW ? "YES" : "NO");
+    Serial.print(" | Time: ");
+    Serial.print((now - (status == "AVAILABLE" ? lastVibrationTime : firstVibrationTime)) / 1000);
+    Serial.println("s");
+  }
+
+  lastState = currentState;
+  delay(10);
+}
