@@ -1,0 +1,147 @@
+// Sensor Getaran SW-420
+// Wemos D1 Mini (ESP8266)
+// Apabila ada getaran berturut-turut selama 40 - 60 detik = starting
+// Apabila ada getaran > 60 detik = in use
+// Apabila tidak ada getaran berturut-turue selama 180 detik = available
+// Modifikasi Logika Getaran untuk mengantisipasi kondisi idle pada saat mesin cuci masih beroperasi
+// Hasil: Mampu melakukan analisis getaran pada saat mesin cuci beroperasi
+// Getaran Buka/Tutup pintu mesin cuci tidak menghasilkan status IN USE
+// Mampu mengantisipasi kondisi idle, dimana status tetap in use karena mesin cuci masih beroperasi
+// Problem: pada saat mesin masih cuci mau berhenti beroperasi memunculkan beberapa getaran yang cukup tinggi
+// dan rentang waktu yang lebih dari 60 detik sebelum kondisi END shingga merubah status menjadi IN USE
+// sementara proses pencucian sudah selesai dan ketika > 180 detik tidak ada getaran status tetap IN USE
+
+
+#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+
+#define SCREEN_WIDTH 128
+#define SCREEN_HEIGHT 32
+#define OLED_RESET -1
+
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+
+const int vibrationPin = D5;
+
+unsigned long lastVibrationTime = 0;
+unsigned long firstVibrationTime = 0;
+unsigned long idleStartTime = 0;
+bool isVibrating = false;
+String status = "AVAILABLE";
+
+// Konstanta waktu (ms)
+const unsigned long DEBOUNCE_DELAY = 50;
+const unsigned long STARTING_MIN = 40000; // 30 detik
+const unsigned long STARTING_MAX = 60000; // 60 detik
+const unsigned long INUSE_MIN = 60000;    // >60 detik
+const unsigned long IDLE_THRESHOLD = 180000; // >180 detik tanpa getaran
+const unsigned long VIBRATION_GAP = 2000;
+const unsigned long DISPLAY_UPDATE_INTERVAL = 1000;
+
+void setup() {
+  Serial.begin(115200);
+  pinMode(vibrationPin, INPUT_PULLUP);
+
+  if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
+    Serial.println(F("OLED gagal"));
+    while (1);
+  }
+
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setTextColor(WHITE);
+  display.setCursor(0,0);
+  display.println("System Ready");
+  display.display();
+  delay(1000);
+
+  idleStartTime = millis();
+  status = "AVAILABLE";
+  Serial.println("Status: AVAILABLE");
+}
+
+void loop() {
+  static bool lastState = HIGH;
+  static unsigned long lastDisplayUpdate = 0;
+
+  bool currentState = digitalRead(vibrationPin);
+
+  // Debounce
+  if (currentState != lastState) {
+    delay(DEBOUNCE_DELAY);
+    currentState = digitalRead(vibrationPin);
+  }
+
+  unsigned long now = millis();
+
+  // Jika getaran terdeteksi
+  if (currentState == LOW) {
+    if (!isVibrating) {
+      isVibrating = true;
+      firstVibrationTime = now;
+      Serial.println("Vibration started");
+    }
+    lastVibrationTime = now;
+    idleStartTime = now;
+  }
+
+  // Jika getaran berhenti untuk sementara
+  if (isVibrating && (now - lastVibrationTime > VIBRATION_GAP)) {
+    isVibrating = false;
+    Serial.println("Vibration stopped temporarily");
+  }
+
+  // Penentuan status berdasarkan waktu getaran
+  if (isVibrating) {
+    unsigned long vibDuration = now - firstVibrationTime;
+
+    if (vibDuration >= STARTING_MIN && vibDuration <= STARTING_MAX) {
+      if (status != "STARTING") {
+        status = "STARTING";
+        Serial.println("Status: STARTING");
+      }
+    }
+    else if (vibDuration > INUSE_MIN) {
+      if (status != "IN USE") {
+        status = "IN USE";
+        Serial.println("Status: IN USE");
+      }
+    }
+  }
+
+  // Jika tidak ada getaran selama lebih dari 180 detik
+  if (!isVibrating && (now - lastVibrationTime > IDLE_THRESHOLD)) {
+    if (status != "AVAILABLE") {
+      status = "AVAILABLE";
+      Serial.println("Status: AVAILABLE");
+    }
+  }
+
+  // Tampilkan ke OLED setiap 1 detik
+  if (now - lastDisplayUpdate > DISPLAY_UPDATE_INTERVAL) {
+    lastDisplayUpdate = now;
+    display.clearDisplay();
+    display.setCursor(0, 0);
+    display.print("Status: ");
+    display.println(status);
+
+    display.setCursor(0, 12);
+    if (status == "IN USE" || status == "STARTING") {
+      unsigned long vibTime = (now - firstVibrationTime) / 1000;
+      display.print("Vib Duration: ");
+      display.print(vibTime);
+      display.println("s");
+    } else {
+      unsigned long idleTime = (now - lastVibrationTime) / 1000;
+      display.print("Idle Time: ");
+      display.print(idleTime);
+      display.println("s");
+    }
+
+    display.display();
+  }
+
+  lastState = currentState;
+  delay(10); // CPU saving
+}
