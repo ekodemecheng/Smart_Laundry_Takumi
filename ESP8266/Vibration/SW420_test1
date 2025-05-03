@@ -3,7 +3,7 @@
 // Apabila ada getaran valid = in use
 // Apabila tidak ada getaran selama 60 detik = available
 // Hasil: mampu melakukan analisa getaran mesin cuci 
-// tetapi jika muncul getaran dari buka/tutup mesin cuci maka status menjadi IN USE
+// Problem: tetapi jika muncul getaran dari buka/tutup mesin cuci maka status menjadi IN USE
 
 #include <Wire.h>
 #include <Adafruit_GFX.h>
