@@ -1,4 +1,4 @@
-// Sensor Getaran SW-420
+// Sensor Getaran SW-420 -- test3 (Mode Drain+Spin 12 min)
 // Wemos D1 Mini (ESP8266)
 // Apabila ada getaran berturut-turut selama 40 - 60 detik = starting
 // Apabila ada getaran > 60 detik = in use
