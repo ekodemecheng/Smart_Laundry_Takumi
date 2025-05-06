@@ -4,7 +4,7 @@ Parameter uji coba:
 - Operasi mesin cuci pada mode Spin+Drain selama 12 menit
 - Sensor diletakkan pada bodi mesin cuci
 - Pengamatan terhadap getaran dilakukan mulai dari buka/tutup pintu mesin cuci --> memilih mode --> tekan start --> proses berjalan --> End --> buka/tutup pintu mesin cuci
-- Karakteristik getaran yang timbul pada mesin cuci beroperasi diamati untuk menentukan logika status IN USE, PROCESS, dan AVAILABLE
+- Karakteristik getaran yang timbul pada mesin cuci selama beroperasi diamati untuk menentukan logika status IN USE, PROCESS, dan AVAILABLE
 - Perubahan status berdasarkan Variabel sbb: getaran yang muncul/hilang, rentang waktu, dan kontinuitas getaran
 - rentang waktu 0–60 detik getaran → IN USE; >60–150 detik getaran → PROCESS; >150 detik tanpa getaran → AVAILABLE dan hitungan getaran direset
 
