@@ -1,0 +1,71 @@
+// Deteksi Getaran SW420
+
+#define SENSOR_PIN D5  // Pin sensor getaran
+
+// Variabel untuk debouncing
+unsigned long lastDebounceTime = 0;
+unsigned long debounceDelay = 50;  // waktu debounce dalam ms
+int lastSteadyState = HIGH;       // state stabil sebelumnya
+int lastFlickerableState = HIGH;  // state raw sebelumnya
+int currentState;                 // state saat ini
+
+// Variabel getaran
+unsigned long vibrationCount = 0;
+unsigned long lastVibrationTime = 0;
+
+void setup() {
+  Serial.begin(115200);
+  pinMode(SENSOR_PIN, INPUT_PULLUP);
+  
+  Serial.println("\nSistem Deteksi Getaran");
+  Serial.println("---------------------");
+  Serial.println("Menunggu getaran...");
+  Serial.println("(Putar potensiometer pada modul SW-420 untuk mengatur sensitivitas)");
+  Serial.println();
+}
+
+void loop() {
+  // Baca state sensor dengan debounce
+  int reading = digitalRead(SENSOR_PIN);
+  
+  // Logika debouncing
+  if (reading != lastFlickerableState) {
+    lastDebounceTime = millis();
+    lastFlickerableState = reading;
+  }
+
+  if ((millis() - lastDebounceTime) > debounceDelay) {
+    if (reading != currentState) {
+      currentState = reading;
+      
+      // Deteksi perubahan state (HIGH -> LOW)
+      if (lastSteadyState == HIGH && currentState == LOW) {
+        vibrationCount++;
+        lastVibrationTime = millis();
+        
+        Serial.print("[");
+        Serial.print(millis()/1000.0, 3);
+        Serial.print("s] Getaran terdeteksi! ");
+        Serial.print("Total: ");
+        Serial.println(vibrationCount);
+      }
+      
+      // Deteksi perubahan state (LOW -> HIGH)
+      if (lastSteadyState == LOW && currentState == HIGH) {
+        Serial.print("[");
+        Serial.print(millis()/1000.0, 3);
+        Serial.println("s] Getaran berhenti");
+      }
+    }
+  }
+  
+  lastSteadyState = currentState;
+  
+  // Reset counter jika tidak ada getaran dalam 10 detik
+  if (vibrationCount > 0 && (millis() - lastVibrationTime) > 10000) {
+    Serial.println("\n[System] Reset counter getaran (tidak ada aktivitas 10 detik)\n");
+    vibrationCount = 0;
+  }
+  
+  delay(1); // Delay kecil untuk mengurangi beban CPU
+}
