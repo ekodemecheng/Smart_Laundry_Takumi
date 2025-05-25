@@ -1,0 +1,88 @@
+#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+
+#define SCREEN_WIDTH 128
+#define SCREEN_HEIGHT 32
+#define OLED_RESET    -1
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+
+const int sensorPin = A0;
+const int sampleCount = 100;
+
+float sensitivity = 0.036;    // 36mVa sensitivitas sensor (1V per 1A)
+float offsetVoltage = 0;    // akan dihitung otomatis
+float arusThreshold = 0.0; // ambang minimal arus dianggap "terkunci"
+
+void setup() {
+  Serial.begin(115200);
+
+  // Inisialisasi OLED
+  if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
+    Serial.println(F("Gagal inisialisasi OLED"));
+    while (true);
+  }
+
+  // Kalibrasi offset saat start (diasumsikan pintu dalam kondisi terbuka)
+  offsetVoltage = kalibrasiOffset();
+
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setTextColor(SSD1306_WHITE);
+  display.setCursor(0, 0);
+  display.println("WCS1700 Monitor");
+  display.display();
+  delay(1000);
+}
+
+void loop() {
+  float voltage = bacaRataRataTegangan();
+  float current = (voltage - offsetVoltage) / sensitivity;
+
+  if (abs(current) < arusThreshold) current = 0.0;
+
+  // Tampilkan di Serial
+  Serial.print("Voltage: ");
+  Serial.print(voltage, 3);
+  Serial.print(" V | Current: ");
+  Serial.print(current, 3);
+  Serial.println(" A");
+
+  // Tampilkan di OLED
+  display.clearDisplay();
+  display.setCursor(0, 0);
+  display.println("Pintu Mesin Cuci");
+
+  display.setCursor(0, 10);
+  display.print("Arus: ");
+  display.print(current, 3);
+  display.println(" A");
+
+  display.setCursor(0, 20);
+  if (current > arusThreshold) {
+    display.println("Status: TERKUNCI");
+  } else {
+    display.println("Status: TERBUKA");
+  }
+
+  display.display();
+  delay(500);
+}
+
+float bacaRataRataTegangan() {
+  long total = 0;
+  for (int i = 0; i < sampleCount; i++) {
+    total += analogRead(sensorPin);
+    delayMicroseconds(200);
+  }
+  float avg = total / (float)sampleCount;
+  return avg * (3.3 / 1023.0);
+}
+
+float kalibrasiOffset() {
+  Serial.println("Kalibrasi offset, pastikan pintu dalam kondisi TERBUKA...");
+  float offset = bacaRataRataTegangan();
+  Serial.print("Offset voltage: ");
+  Serial.println(offset, 3);
+  return offset;
+}
