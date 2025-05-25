@@ -1,1 +1,18 @@
+const int currentPin = A0;
+float sensitivity = 0.0036; // 36 mV/A untuk WCS1700 
+float offsetVoltage = 2.5; // Tegangan saat arus = 0A
 
+void setup() {
+  Serial.begin(9600);
+}
+
+void loop() {
+  int rawValue = analogRead(currentPin);
+  float voltage = (rawValue / 1023.0) * 5.0; // Konversi ke tegangan (0-5V)
+  float current = (voltage - offsetVoltage) / sensitivity; // Hitung arus
+
+  Serial.print("Arus: ");
+  Serial.print(current, 2);
+  Serial.println(" A");
+  delay(500);
+}
