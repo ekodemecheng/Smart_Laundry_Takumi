@@ -1,0 +1,103 @@
+#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+
+#define SCREEN_WIDTH 128
+#define SCREEN_HEIGHT 32
+#define OLED_RESET    -1
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+
+const int sensorPin = A0;
+const int sampleCount = 200;
+
+float sensitivity = 0.036;     // WCS1700: 36mV per Ampere
+float offsetVoltage = 0.0;     // Diukur saat awal
+float threshold_on = 0.05;     // Arus minimal dianggap TERKUNCI
+float threshold_off = 0.02;    // Arus minimal dianggap TERBUKA
+
+String statusPintu = "TERBUKA";
+unsigned long lastLowCurrentMillis = 0;
+const unsigned long recalibrationInterval = 30000; // 30 detik arus rendah → rekalibrasi
+
+void setup() {
+  Serial.begin(115200);
+
+  if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
+    Serial.println(F("OLED gagal"));
+    while (true);
+  }
+
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setTextColor(SSD1306_WHITE);
+  display.setCursor(0, 0);
+  display.println("Kalibrasi offset...");
+  display.display();
+
+  offsetVoltage = kalibrasiOffset();
+  delay(500);
+}
+
+void loop() {
+  float voltage = bacaRataRataTegangan();
+  float current = (voltage - offsetVoltage) / sensitivity;
+
+  // Terapkan histeresis untuk menghindari status bolak-balik
+  if (statusPintu == "TERBUKA" && current > threshold_on) {
+    statusPintu = "TERKUNCI";
+  } else if (statusPintu == "TERKUNCI" && current < threshold_off) {
+    statusPintu = "TERBUKA";
+    lastLowCurrentMillis = millis(); // mulai hitung waktu arus rendah
+  }
+
+  // Rekalibrasi offset jika arus sangat kecil terlalu lama
+  if (abs(current) < threshold_off && (millis() - lastLowCurrentMillis > recalibrationInterval)) {
+    offsetVoltage = kalibrasiOffset();
+    lastLowCurrentMillis = millis(); // reset waktu
+  }
+
+  // Tampilkan di Serial
+  Serial.print("Tegangan: ");
+  Serial.print(voltage, 3);
+  Serial.print(" V | Arus: ");
+  Serial.print(current, 3);
+  Serial.print(" A | Status: ");
+  Serial.println(statusPintu);
+
+  // Tampilkan di OLED
+  display.clearDisplay();
+  display.setCursor(0, 0);
+  display.println("Pintu Mesin Cuci");
+
+  display.setCursor(0, 10);
+  display.print("Arus: ");
+  display.print(current, 3);
+  display.println(" A");
+
+  display.setCursor(0, 20);
+  display.print("Status: ");
+  display.println(statusPintu);
+  display.display();
+
+  delay(300);
+}
+
+float bacaRataRataTegangan() {
+  long total = 0;
+  for (int i = 0; i < sampleCount; i++) {
+    total += analogRead(sensorPin);
+    delayMicroseconds(150);  // Lebih cepat sampling
+  }
+  float avg = total / (float)sampleCount;
+  return avg * (3.3 / 1023.0);  // Sesuaikan jika Wemos pakai 3.3V
+}
+
+float kalibrasiOffset() {
+  Serial.println("Kalibrasi offset (arus 0 A)...");
+  delay(1000);
+  float offset = bacaRataRataTegangan();
+  Serial.print("Offset baru: ");
+  Serial.print(offset, 3);
+  Serial.println(" V");
+  return offset;
+}
