@@ -1,0 +1,68 @@
+#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+
+#define SCREEN_WIDTH 128
+#define SCREEN_HEIGHT 32
+#define OLED_RESET -1
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+
+const int currentSensorPin = A0;  // Pin analog untuk sensor arus
+const float sensitivity = 0.066;  // Sensitivitas WCS1700 (66mV/A)
+const float vRef = 3.3;           // Tegangan referensi WEMOS Mini (3.3V)
+const int adcResolution = 1023;   // Resolusi ADC 10-bit
+
+void setup() {
+  Serial.begin(115200);
+  
+  // Inisialisasi OLED
+  if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
+    Serial.println(F("OLED display gagal!"));
+    for(;;);
+  }
+  display.display();
+  delay(2000);
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setTextColor(SSD1306_WHITE);
+}
+
+void loop() {
+  // Baca nilai analog dari sensor
+  int adcValue = analogRead(currentSensorPin);
+  
+  // Konversi ke tegangan
+  float voltage = (adcValue * vRef) / adcResolution;
+  
+  // Hitung arus (dalam Ampere)
+  // Rumus: Arus = (Tegangan - Voffset) / Sensitivitas
+  // Asumsi Voffset = Vref/2 (1.65V untuk 3.3V)
+  float current = (voltage - (vRef/2)) / sensitivity;
+  
+  // Tampilkan di Serial Monitor
+  Serial.print("ADC Value: ");
+  Serial.print(adcValue);
+  Serial.print(" | Voltage: ");
+  Serial.print(voltage, 3);
+  Serial.print("V | Current: ");
+  Serial.print(current, 3);
+  Serial.println("A");
+  
+  // Tampilkan di OLED
+  display.clearDisplay();
+  display.setCursor(0,0);
+  display.print("Arus: ");
+  display.print(current, 2);
+  display.println(" A");
+  
+  // Untuk tampilan yang lebih baik di OLED kecil
+  display.setCursor(0, 15);
+  display.print("ADC: ");
+  display.print(adcValue);
+  display.print(" V: ");
+  display.print(voltage, 2);
+  
+  display.display();
+  
+  delay(500);  // Delay antara pembacaan
+}
