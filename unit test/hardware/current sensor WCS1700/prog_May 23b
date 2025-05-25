@@ -1,0 +1,67 @@
+#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+
+// Konfigurasi OLED
+#define SCREEN_WIDTH 128
+#define SCREEN_HEIGHT 32
+#define OLED_RESET -1
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+
+// Konfigurasi Sensor WCS1700
+const int currentPin = A0;  // Pin analog Wemos (A0)
+const float sensitivity = 0.036; // 36mV/A (sesuai datasheet WCS1700)
+const int lilitan = 1;       // Jumlah lilitan kabel di sensor
+
+// Variabel kalibrasi
+const float zeroOffset = 0.0; // Offset jika ada arus noise saat 0A
+
+void setup() {
+  Serial.begin(115200);
+  
+  // Inisialisasi OLED
+  if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) { // Alamat I2C OLED biasanya 0x3C atau 0x3D
+    Serial.println(F("OLED gagal!"));
+    while (1);
+  }
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setTextColor(SSD1306_WHITE);
+  display.setCursor(0, 0);
+  display.println("Monitoring Arus");
+  display.display();
+  delay(2000);
+}
+
+void loop() {
+  // Baca nilai analog dan konversi ke arus
+  int adcValue = analogRead(currentPin);
+  float voltage = (adcValue / 1024.0) * 3.3; // Wemos A0 range 0-3.3V
+  float current = (voltage / sensitivity) / lilitan - zeroOffset;
+
+  // Tampilkan di Serial Monitor
+  Serial.print("ADC: ");
+  Serial.print(adcValue);
+  Serial.print(" | Arus: ");
+  Serial.print(current, 3);
+  Serial.println(" A");
+
+  // Tampilkan di OLED
+  display.clearDisplay();
+  display.setCursor(0, 0);
+  display.print("Arus: ");
+  display.print(current, 3);
+  display.println(" A");
+
+  // Deteksi status pintu
+  if (current > 0.05) { // Threshold 50mA (sesuaikan)
+    display.println("Status: TERKUNCI");
+    Serial.println("Status: Pintu Terkunci");
+  } else {
+    display.println("Status: TERBUKA");
+    Serial.println("Status: Pintu Terbuka");
+  }
+  display.display();
+
+  delay(500); // Delay untuk stabilisasi pembacaan
+}
