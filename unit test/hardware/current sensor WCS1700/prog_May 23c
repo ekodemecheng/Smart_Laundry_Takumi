@@ -1,0 +1,89 @@
+#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+
+#define SCREEN_WIDTH 128
+#define SCREEN_HEIGHT 32
+#define OLED_RESET -1
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+
+const int currentPin = A0;
+const float sensitivity = 0.036; // 36mV/A (WCS1700)
+const int lilitan = 1;
+float zeroOffset = 0.0;
+
+// Moving Average Filter
+float readCurrent() {
+  const int SAMPLES = 20;
+  float total = 0;
+  for (int i = 0; i < SAMPLES; i++) {
+    total += analogRead(currentPin);
+    delay(2);
+  }
+  float voltage = (total / SAMPLES / 1024.0) * 3.3;
+  return (voltage / sensitivity) / lilitan - zeroOffset;
+}
+
+// Kalibrasi Zero Offset
+float calibrateZeroOffset() {
+  float total = 0;
+  for (int i = 0; i < 100; i++) {
+    total += analogRead(currentPin);
+    delay(10);
+  }
+  float voltage = (total / 100 / 1024.0) * 3.3;
+  return voltage / sensitivity;
+}
+
+// Deteksi Status Pintu dengan Hysteresis
+bool isDoorLocked(float current) {
+  const float thresholdLock = 0.1;    // 100mA
+  const float thresholdUnlock = 0.02; // 20mA
+  static bool lastState = false;
+
+  if (current > thresholdLock && !lastState) {
+    lastState = true;
+  } else if (current < thresholdUnlock && lastState) {
+    lastState = false;
+  }
+  return lastState;
+}
+
+void setup() {
+  Serial.begin(115200);
+  if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
+    Serial.println(F("OLED gagal!"));
+    while (1);
+  }
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setTextColor(SSD1306_WHITE);
+
+  // Kalibrasi offset saat startup
+  zeroOffset = calibrateZeroOffset();
+  Serial.print("Zero Offset: ");
+  Serial.println(zeroOffset, 5);
+}
+
+void loop() {
+  float current = readCurrent();
+  bool locked = isDoorLocked(current);
+
+  // Serial Monitor
+  Serial.print("Arus: ");
+  Serial.print(current, 3);
+  Serial.print(" A | Status: ");
+  Serial.println(locked ? "TERKUNCI" : "TERBUKA");
+
+  // OLED Display
+  display.clearDisplay();
+  display.setCursor(0, 0);
+  display.print("Arus: ");
+  display.print(current, 3);
+  display.println(" A");
+  display.print("Status: ");
+  display.println(locked ? "TERKUNCI" : "TERBUKA");
+  display.display();
+
+  delay(500);
+}
