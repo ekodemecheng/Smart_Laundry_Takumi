@@ -1,0 +1,19 @@
+const int currentPin = A0;  // Pin analog tunggal di Wemos D1 Mini
+float sensitivity = 0.0185; // 18.5 mV/A untuk WCS1700 (sesuaikan dengan model Anda)
+float offsetVoltage = 1.65; // Tegangan saat arus = 0A (karena 3.3V / 2 = 1.65V)
+
+void setup() {
+  Serial.begin(115200);  // Baud rate lebih tinggi untuk ESP8266
+  analogReference(EXTERNAL); // Jika perlu, pastikan tegangan referensi 3.3V
+}
+
+void loop() {
+  int rawValue = analogRead(currentPin);
+  float voltage = (rawValue / 1023.0) * 3.3; // Konversi ke tegangan (0-3.3V)
+  float current = (voltage - offsetVoltage) / sensitivity; // Hitung arus
+
+  Serial.print("Arus: ");
+  Serial.print(current, 2);
+  Serial.println(" A");
+  delay(500);
+}
